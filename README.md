@@ -35,20 +35,49 @@ AI・RPAツールを活用した採用代行業務（RPO）の自動化・効率
 4. **結果出力**: Google Sheetsへ結果を記録
 5. **フィードバック**: クライアント判断を学習データとして活用
 
-## プロジェクト構成
+## プロジェクト構成（詳細）
+
+プロジェクトの全体像を把握しやすくするため、各ディレクトリに含まれる主要なファイルとその役割を解説します。
 
 ```
 rpo-automation/
-├── src/
-│   ├── scraping/          # Bizreachスクレイピング
-│   ├── ai/                # AI判定ロジック
-│   ├── data/              # データ処理・構造化
-│   ├── sheets/            # Google Sheets連携
-│   └── utils/             # 共通ユーティリティ
-├── config/                # 設定ファイル
-├── tests/                 # テストコード
-├── docs/                  # ドキュメント
-└── scripts/               # 実行スクリプト
+│
+├── src/                     # プログラムの心臓部。ビジネスロジックを格納。
+│   │
+│   ├── scraping/            # Webサイトから情報を取得するスクレイピング関連
+│   │   └── bizreach.py      # Bizreachのサイトを操作し、候補者情報を取得する
+│   │
+│   ├── ai/                  # AIモデルとの連携やプロンプト生成
+│   │   ├── gemini_client.py # Google Gemini APIと通信するためのクライアント
+│   │   ├── openai_client.py # OpenAI API(ChatGPT)と通信するためのクライアント
+│   │   └── matching_engine.py # 採用要件と候補者情報を基に、AIにマッチング判定を依頼する
+│   │
+│   ├── data/                # データの変換や整形、構造化を担当
+│   │   └── structure.py     # Google Docsから取得した採用要件を、AIが扱いやすいJSON形式に整形する
+│   │
+│   ├── sheets/              # Google Sheetsとの連携
+│   │   └── writer.py        # AIの判定結果をスプレッドシートに書き込む
+│   │
+│   └── utils/               # 複数の機能で共通して使われる便利機能
+│       ├── logging_config.py  # ログの出力形式やレベルを設定する
+│       └── env_loader.py      # .envファイルから環境変数を読み込む
+│
+├── config/                  # 設定ファイルを格納
+│   └── settings.py          # プロジェクト全体で利用する定数や設定値（例: タイムアウト秒数）
+│
+├── tests/                   # プログラムの品質を保証するテストコード
+│   ├── unit/                # 関数単位の小さなテスト
+│   └── integration/         # 複数の機能を連携させた大きなテスト
+│
+├── docs/                    # プロジェクトの仕様や設計に関するドキュメント
+│   └── troubleshooting.md   # よくある問題と解決策をまとめる
+│
+├── scripts/                 # プロジェクトのメイン処理を実行するスクリプト
+│   └── daily_screening.py   # 日次のスクリーニングタスク（データ取得→AI判定→出力）を実行する
+│
+├── .env.example             # 環境変数のテンプレートファイル
+├── requirements.txt         # プロジェクトに必要なPythonライブラリの一覧
+└── README.md                # このファイル。プロジェクトの全体像を説明
 ```
 
 ## セットアップ
