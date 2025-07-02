@@ -1,0 +1,43 @@
+# Core dependencies
+playwright==1.40.0
+google-cloud-bigquery==3.13.0
+google-cloud-storage==2.10.0
+google-cloud-logging==3.8.0
+
+# AI/ML APIs
+openai==1.6.1
+google-generativeai==0.3.2
+
+# Google APIs
+google-api-python-client==2.108.0
+google-auth==2.25.2
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+
+# Data processing
+pandas==2.1.4
+pandas-gbq==0.19.2
+pydantic==2.5.2
+
+# Web framework (for webhooks/API if needed)
+fastapi==0.104.1
+uvicorn==0.25.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+tenacity==8.2.3
+python-dateutil==2.8.2
+
+# Development dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+black==23.12.0
+isort==5.13.2
+mypy==1.7.1
+pre-commit==3.6.0
+
+# Type stubs
+types-requests==2.31.0.10
+pandas-stubs==2.1.4.231227
