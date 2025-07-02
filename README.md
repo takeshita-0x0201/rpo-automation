@@ -12,20 +12,20 @@ AI・RPAツールを活用した採用代行業務（RPO）の自動化・効率
 
 ```mermaid
 graph TD
-    A[1. 担当者] -->|採用要件を記述| B(2. Google Docs);
-    B -->|API経由で読込| C{3. Cloud Functions};
-    C -->|構造化を依頼| D(4. Gemini API);
-    D -->|構造化されたJSON| C;
-    C -->|検索・取得を指示| E(5. Playwright);
-    E -->|ログイン・操作| F(6. Bizreach);
-    F -->|候補者情報| E;
-    E -->|取得した情報| C;
-    C -->|判定依頼| G(7. ChatGPT-4o API);
-    G -->|判定結果| C;
-    C -->|処理結果を保存| H(8. BigQuery);
-    C -->|結果を追記| I(9. Google Sheets);
-    I -->|結果を確認| J[10. 担当者];
-    J -->|フィードバック入力| I;
+    A[1. User] -->|Define Requirements| B(2. Google Docs);
+    B -->|Read via API| C{3. Cloud Functions};
+    C -->|Request Structuring| D(4. Gemini API);
+    D -->|Structured JSON| C;
+    C -->|Request Search| E(5. Playwright);
+    E -->|Login & Operate| F(6. Bizreach);
+    F -->|Candidate Info| E;
+    E -->|Acquired Data| C;
+    C -->|Request Matching| G(7. ChatGPT-4o API);
+    G -->|Match Result| C;
+    C -->|Save Result| H(8. BigQuery);
+    C -->|Append Result| I(9. Google Sheets);
+    I -->|Review Result| J[10. User];
+    J -->|Input Feedback| I;
 ```
 
 **処理フローの詳細:**
