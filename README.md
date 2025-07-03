@@ -6,39 +6,96 @@ AI・RPAツールを活用した採用代行業務（RPO）の自動化・効率
 
 本システムは、Bizreachでの候補者スクリーニングから、AIによる採用要件マッチング判定、結果のレポーティングまでを自動化し、RPO業務の効率化を実現します。
 
-## システム全体像と処理フロー
+## エンタープライズ向けアーキテクチャ
 
-このシステムは、複数のクラウドサービスとAIモデルを連携させ、採用業務の自動化を実現します。以下に、データの流れと各コンポーネントの役割を図解します。
+### システム構成の課題と解決策
+
+本システムは、セキュリティ上の制約により、Bizreachへのアクセスが貸与PCからのみ可能という環境で動作します。この制約を考慮し、**エージェント型アーキテクチャ**を採用しています。
 
 ```mermaid
 graph TD
-    A["1\. 担当者"] -->|採用要件を記述| B["2\. Google Docs"]
-    B -->|API経由で読込| C{"3\. Cloud&nbsp;Functions"}
-    C -->|構造化を依頼| D["4\. Gemini&nbsp;API"]
-    D -->|構造化されたJSON| C
-    C -->|検索・取得を指示| E["5\. Playwright"]
-    E -->|ログイン・操作| F["6\. Bizreach"]
-    F -->|候補者情報| E
-    E -->|取得した情報| C
-    C -->|マッチング判定を依頼| G["7\. ChatGPT-4o&nbsp;API"]
-    G -->|判定結果| C
-    C -->|処理結果を保存| H["8\. BigQuery"]
-    C -->|結果を追記| I["9\. Google&nbsp;Sheets"]
-    I -->|結果を確認| J["10\. 担当者"]
-    J -->|フィードバック入力| I
+    subgraph "開発環境"
+        A[開発PC]
+    end
+    
+    subgraph "クラウド環境 (GCP)"
+        B[Cloud Functions<br/>制御系]
+        C[Pub/Sub<br/>メッセージキュー]
+        D[BigQuery<br/>データ保存]
+        E[Gemini API]
+        F[ChatGPT-4o API]
+    end
+    
+    subgraph "実行環境"
+        G[貸与PC<br/>エージェント]
+        H[Bizreach]
+    end
+    
+    subgraph "結果確認"
+        I[Google Sheets]
+        J[採用担当者]
+    end
+    
+    A -->|開発・デプロイ| B
+    B -->|ジョブ送信| C
+    C -->|ポーリング| G
+    G -->|スクレイピング| H
+    G -->|結果送信| C
+    C -->|データ取得| B
+    B -->|構造化依頼| E
+    B -->|判定依頼| F
+    B -->|保存| D
+    B -->|出力| I
+    I -->|確認| J
+    J -->|フィードバック| I
 ```
 
-**処理フローの詳細:**
+### エージェント型アーキテクチャの特徴
 
-1.  **採用要件の定義:** 担当者がGoogle Docsに、求める人物像やスキルセットなどの採用要件を自然言語で記述します。
-2.  **ドキュメント読込:** 毎日決まった時間、または手動実行をトリガーに、Cloud FunctionsがGoogle Docs APIを介して採用要件を読み込みます。
-3.  **要件の構造化:** Cloud Functionsは、読み込んだ文章をGemini APIに送信し、「必須スキル」「歓迎スキル」「求める人物像」といった項目で整理されたJSON形式のデータに変換します。
-4.  **候補者スクレイピング:** 構造化された採用要件に基づき、Playwright（ブラウザ自動化ツール）がBizreachにログインし、関連する候補者を検索・スキャンして、職務経歴などの情報を取得します。
-5.  **AIによるマッチング判定:** Cloud Functionsは、取得した候補者一人ひとりの情報と、構造化された採用要件をセットにして、ChatGPT-4o APIに送信します。「この候補者は採用要件にどれくらいマッチしますか？」という問いを投げかけ、マッチングスコア、評価理由、懸念点などを取得します。
-6.  **結果の保存と可視化:**
-    *   AIの判定結果を含む全ての処理データは、分析とバックアップのために**BigQuery**に保存されます。
-    *   担当者が直接確認するために、候補者の情報とAIの判定結果が**Google Sheets**に1行ずつ追記されます。
-7.  **フィードバックループ:** 担当者はGoogle Sheets上でAIの判定結果を確認し、「◎（採用）」「△（保留）」などの最終判断を追記します。このフィードバックデータは、将来的にAIのプロンプトを改善し、判定精度を向上させるための教師データとして活用されます。
+1. **非同期通信**: Google Cloud Pub/Subを使用し、貸与PCとクラウド間で非同期にメッセージをやり取り
+2. **疎結合**: 各コンポーネントが独立して動作し、障害の影響範囲を限定
+3. **スケーラブル**: 複数の貸与PCエージェントを並列実行可能
+
+## システム全体のUXフロー
+
+### Phase 1: 採用要件の登録
+
+```mermaid
+graph TD
+    A[採用担当者] -->|1. 要件作成| B{入力方法選択}
+    B -->|簡易版| C[Bizreach風フォーム]
+    B -->|詳細版| D[自然言語で記述]
+    
+    C -->|2. フォーム入力| E[構造化データ]
+    D -->|2. テキスト入力| F[Gemini API]
+    F -->|3. AI構造化| E
+    
+    E -->|4. 確認画面| G[採用担当者が確認・修正]
+    G -->|5. 登録完了| H[(BigQuery保存)]
+```
+
+**特徴的な機能:**
+- **Bizreach検索UIとの統一**: 採用要件入力フォームをBizreachの検索画面と同じUIで実装
+- **AI自動構造化**: 自然言語で書かれた要件をGemini APIが自動でJSON構造化
+
+### Phase 2: 候補者検索の実行
+
+1. 採用担当者が登録済み要件から選択
+2. Cloud FunctionsがPub/Sub経由でジョブを送信
+3. 貸与PCエージェントが定期的にポーリング
+4. Bizreachで自動検索・データ取得
+5. 結果をPub/Sub経由でクラウドに送信
+
+### Phase 3: AI判定とレポート生成
+
+1. 取得した候補者データをChatGPT-4oでマッチング判定
+2. スコア・評価理由を含むレポートを自動生成
+3. Google Sheetsに結果を自動出力
+4. 採用担当者に完了通知
+
+### Phase 4: フィードバックと継続的改善
+
+採用担当者のフィードバックを蓄積し、AI判定の精度を継続的に向上させます。
 
 ## クラウドアーキテクチャ (GCP)
 
@@ -87,11 +144,22 @@ graph TD
 
 ### データフロー
 
-1. **採用要件取得**: Google Docsから要件を取得しJSON構造化
-2. **候補者検索**: Bizreachで自動検索・情報取得
-3. **AI判定**: 要件と候補者のマッチング判定
+1. **採用要件取得**: Webフォームまたは自然言語入力から要件を取得しJSON構造化
+2. **候補者検索**: 貸与PCエージェントがBizreachで自動検索・情報取得
+3. **AI判定**: 要件と候補者のマッチング判定（ChatGPT-4o）
 4. **結果出力**: Google Sheetsへ結果を記録
-5. **フィードバック**: クライアント判断を学習データとして活用
+5. **フィードバック**: 企業別の採用パターンを学習データとして蓄積
+
+### データベース設計
+
+本システムは、企業別の採用文化や表現の違いを学習するため、以下のようなデータ構造を持ちます：
+
+- **企業マスタ**: 企業情報、業界、規模などを管理
+- **採用要件マスタ**: 原本テキスト、構造化データ、企業IDを紐付けて管理
+- **検索実行履歴**: 実際の検索条件と候補者数を記録
+- **採用成果**: 最終的な採用実績とフィードバックを保存
+
+これにより、企業特有の用語（例：「即戦力」の定義）や採用成功パターンを学習し、マルチテナント対応のAI最適化を実現します。
 
 ## プロジェクト構成（詳細）
 
@@ -102,6 +170,11 @@ rpo-automation/
 │
 ├── src/                     # プログラムの心臓部。ビジネスロジックを格納。
 │   │
+│   ├── agent/               # 貸与PC上で動作するエージェント関連
+│   │   ├── agent.py         # メインのエージェントプログラム
+│   │   ├── poller.py        # Pub/Subからジョブを取得するポーリング処理
+│   │   └── executor.py      # スクレイピング実行とエラーハンドリング
+│   │
 │   ├── scraping/            # Webサイトから情報を取得するスクレイピング関連
 │   │   └── bizreach.py      # Bizreachのサイトを操作し、候補者情報を取得する
 │   │
@@ -111,7 +184,12 @@ rpo-automation/
 │   │   └── matching_engine.py # 採用要件と候補者情報を基に、AIにマッチング判定を依頼する
 │   │
 │   ├── data/                # データの変換や整形、構造化を担当
-│   │   └── structure.py     # Google Docsから取得した採用要件を、AIが扱いやすいJSON形式に整形する
+│   │   ├── structure.py     # 採用要件を構造化する
+│   │   └── company_patterns.py # 企業別の採用パターンを管理
+│   │
+│   ├── web/                 # Webインターフェース関連
+│   │   ├── forms.py         # Bizreach風の採用要件入力フォーム
+│   │   └── dashboard.py     # システムダッシュボード
 │   │
 │   ├── sheets/              # Google Sheetsとの連携
 │   │   └── writer.py        # AIの判定結果をスプレッドシートに書き込む
@@ -131,7 +209,8 @@ rpo-automation/
 │   └── troubleshooting.md   # よくある問題と解決策をまとめる
 │
 ├── scripts/                 # プロジェクトのメイン処理を実行するスクリプト
-│   └── daily_screening.py   # 日次のスクリーニングタスク（データ取得→AI判定→出力）を実行する
+│   ├── daily_screening.py   # 日次のスクリーニングタスク（データ取得→AI判定→出力）を実行する
+│   └── install_agent.py     # 貸与PCにエージェントをインストールするスクリプト
 │
 ├── .env.example             # 環境変数のテンプレートファイル
 ├── requirements.txt         # プロジェクトに必要なPythonライブラリの一覧
@@ -178,11 +257,21 @@ cp .env.example .env
 
 ### 必要な環境変数
 
+#### クラウド環境（Cloud Functions）
 - `GOOGLE_CLOUD_PROJECT`: GCPプロジェクトID
 - `BIGQUERY_DATASET`: BigQueryデータセット名
 - `OPENAI_API_KEY`: OpenAI APIキー
 - `GEMINI_API_KEY`: Gemini APIキー
 - `GOOGLE_SHEETS_ID`: 出力先のGoogle Sheets ID
+- `PUBSUB_TOPIC`: Pub/Subトピック名
+- `PUBSUB_SUBSCRIPTION`: Pub/Subサブスクリプション名
+
+#### エージェント環境（貸与PC）
+- `GOOGLE_CLOUD_PROJECT`: GCPプロジェクトID
+- `PUBSUB_SUBSCRIPTION`: ジョブ受信用サブスクリプション
+- `PUBSUB_RESULT_TOPIC`: 結果送信用トピック
+- `BIZREACH_USERNAME`: Bizreachログイン用ユーザー名
+- `BIZREACH_PASSWORD`: Bizreachログイン用パスワード
 
 ## 使用方法
 
@@ -262,12 +351,31 @@ pytest --cov=src tests/
 
 ## デプロイ
 
+### Cloud Functions（制御系）のデプロイ
+
 ```bash
-# Cloud Functionsへのデプロイ
-gcloud functions deploy daily-screening \
+# メイン処理のデプロイ
+gcloud functions deploy rpo-controller \
     --runtime python39 \
-    --trigger-schedule "0 9 * * *" \
-    --entry-point main
+    --trigger-http \
+    --entry-point main \
+    --set-env-vars PUBSUB_TOPIC=bizreach-jobs
+
+# 定期実行の設定
+gcloud scheduler jobs create http daily-screening \
+    --schedule="0 9 * * *" \
+    --uri=https://[REGION]-[PROJECT].cloudfunctions.net/rpo-controller \
+    --http-method=POST
+```
+
+### エージェントの設定（貸与PC）
+
+```bash
+# エージェントのインストール
+python scripts/install_agent.py
+
+# Windowsサービスとして登録（自動起動）
+# または、スタートアップに登録して常駐化
 ```
 
 ## 運用
