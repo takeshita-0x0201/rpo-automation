@@ -166,7 +166,7 @@ sequenceDiagram
     Agent->>Agent: 10. スクレイピング実行
     Agent->>PS: 11. 候補者データ送信
     
-    CF->>PS: 12. 結果を受信
+    PS->>CF: 12. 結果を送信
     CF->>CF: 13. AI判定実行
     CF->>BQ: 14. 結果保存
 ```
