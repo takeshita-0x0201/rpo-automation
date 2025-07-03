@@ -10,44 +10,57 @@ AI・RPAツールを活用した採用代行業務（RPO）の自動化・効率
 
 ### システム構成の課題と解決策
 
-本システムは、セキュリティ上の制約により、Bizreachへのアクセスが貸与PCからのみ可能という環境で動作します。この制約を考慮し、**エージェント型アーキテクチャ**を採用しています。
+本システムは、セキュリティ上の制約により、Bizreachへのアクセスが貸与PCからのみ可能という環境で動作します。この制約を考慮し、**エージェント型アーキテクチャ**を採用し、ユーザビリティ向上のため**採用要件管理部分のみWebApp化**しています。
+
+### WebApp化の範囲
+
+#### WebApp化する機能（ユーザーインターフェース）
+- **採用要件管理**: Bizreach風フォームでの要件登録・編集
+- **実行管理**: スクレイピング実行指示と状況モニタリング  
+- **結果確認**: 処理完了通知とGoogle Sheetsへのリンク
+
+#### バックエンド処理（WebApp化しない）
+- **スクレイピング**: 貸与PCエージェントで実行
+- **AI判定**: Cloud Functionsでバックグラウンド処理
+- **データ出力**: 自動的にGoogle Sheets/BigQueryへ保存
 
 ```mermaid
 graph TD
-    subgraph "開発環境"
-        A[開発PC]
+    subgraph "ユーザーインターフェース"
+        A[採用担当者]
+        B[WebApp<br/>Cloud Run]
     end
     
     subgraph "クラウド環境 (GCP)"
-        B[Cloud Functions<br/>制御系]
-        C[Pub/Sub<br/>メッセージキュー]
-        D[BigQuery<br/>データ保存]
-        E[Gemini API]
-        F[ChatGPT-4o API]
+        C[Cloud Functions<br/>制御系]
+        D[Pub/Sub<br/>メッセージキュー]
+        E[BigQuery<br/>データ保存]
+        F[Gemini API]
+        G[ChatGPT-4o API]
     end
     
     subgraph "実行環境"
-        G[貸与PC<br/>エージェント]
-        H[Bizreach]
+        H[貸与PC<br/>エージェント]
+        I[Bizreach]
     end
     
     subgraph "結果確認"
-        I[Google Sheets]
-        J[採用担当者]
+        J[Google Sheets]
     end
     
-    A -->|開発・デプロイ| B
-    B -->|ジョブ送信| C
-    C -->|ポーリング| G
-    G -->|スクレイピング| H
-    G -->|結果送信| C
-    C -->|データ取得| B
-    B -->|構造化依頼| E
-    B -->|判定依頼| F
-    B -->|保存| D
-    B -->|出力| I
-    I -->|確認| J
-    J -->|フィードバック| I
+    A -->|要件登録・実行指示| B
+    B -->|API呼び出し| C
+    C -->|ジョブ送信| D
+    D -->|ポーリング| H
+    H -->|スクレイピング| I
+    H -->|結果送信| D
+    D -->|データ取得| C
+    C -->|構造化依頼| F
+    C -->|判定依頼| G
+    C -->|保存| E
+    C -->|出力| J
+    B -->|結果表示| A
+    J -->|確認| A
 ```
 
 ### エージェント型アーキテクチャの特徴
@@ -135,12 +148,18 @@ graph TD
 
 - **言語**: Python 3.9+
 - **インフラ**: Google Cloud Platform (GCP)
-- **データストア**: BigQuery
+  - Cloud Run (WebApp)
+  - Cloud Functions (バックエンド処理)
+  - Pub/Sub (メッセージング)
+  - BigQuery (データストア)
 - **AI/ML**: 
   - Google Gemini (構造化・プロンプト生成)
   - OpenAI ChatGPT-4o (マッチング判定)
+- **WebApp**:
+  - FastAPI (バックエンドAPI)
+  - Bootstrap (UI/UX)
 - **ブラウザ自動化**: Playwright
-- **連携**: Google Sheets API, Google Docs API
+- **連携**: Google Sheets API
 
 ### データフロー
 
@@ -187,9 +206,15 @@ rpo-automation/
 │   │   ├── structure.py     # 採用要件を構造化する
 │   │   └── company_patterns.py # 企業別の採用パターンを管理
 │   │
-│   ├── web/                 # Webインターフェース関連
-│   │   ├── forms.py         # Bizreach風の採用要件入力フォーム
-│   │   └── dashboard.py     # システムダッシュボード
+│   ├── web/                 # WebApp関連（FastAPI）
+│   │   ├── main.py          # FastAPIアプリケーションのエントリーポイント
+│   │   ├── routers/         # APIルーター
+│   │   │   ├── requirements.py  # 採用要件管理API
+│   │   │   ├── jobs.py          # ジョブ実行管理API
+│   │   │   └── results.py       # 結果確認API
+│   │   ├── models/          # Pydanticモデル
+│   │   ├── templates/       # HTMLテンプレート
+│   │   └── static/          # CSS/JS（Bootstrap）
 │   │
 │   ├── sheets/              # Google Sheetsとの連携
 │   │   └── writer.py        # AIの判定結果をスプレッドシートに書き込む
@@ -275,23 +300,32 @@ cp .env.example .env
 
 ## 使用方法
 
-### 日次実行
+### WebAppの起動
 
 ```bash
-python scripts/daily_screening.py --date 2024-01-01
+# 開発環境での起動
+cd src/web
+uvicorn main:app --reload --port 8000
+
+# ブラウザでアクセス
+# http://localhost:8000
 ```
 
-### 個別機能の実行
+### エージェントの起動（貸与PC）
 
 ```bash
-# 採用要件の構造化
-python -m src.data.structure_requirements --doc-id [GOOGLE_DOC_ID]
+# エージェントの実行
+python src/agent/agent.py
+```
 
-# 候補者スクリーニング
-python -m src.scraping.bizreach_scraper --job-id [JOB_ID]
+### 手動実行（開発・デバッグ用）
 
-# AI判定実行
-python -m src.ai.matching_engine --candidate-id [CANDIDATE_ID]
+```bash
+# 採用要件の構造化テスト
+python -m src.data.structure_requirements --text "Pythonエンジニア募集..."
+
+# AI判定テスト
+python -m src.ai.matching_engine --requirement-id [REQ_ID] --candidate-id [CAND_ID]
 ```
 
 ## WBS（作業計画書）
@@ -351,21 +385,35 @@ pytest --cov=src tests/
 
 ## デプロイ
 
+### WebAppのデプロイ（Cloud Run）
+
+```bash
+# Dockerイメージのビルドとプッシュ
+gcloud builds submit --tag gcr.io/[PROJECT]/rpo-webapp
+
+# Cloud Runへのデプロイ
+gcloud run deploy rpo-webapp \
+    --image gcr.io/[PROJECT]/rpo-webapp \
+    --platform managed \
+    --region asia-northeast1 \
+    --allow-unauthenticated
+```
+
 ### Cloud Functions（制御系）のデプロイ
 
 ```bash
-# メイン処理のデプロイ
-gcloud functions deploy rpo-controller \
+# API処理のデプロイ
+gcloud functions deploy rpo-api \
     --runtime python39 \
     --trigger-http \
     --entry-point main \
     --set-env-vars PUBSUB_TOPIC=bizreach-jobs
 
-# 定期実行の設定
-gcloud scheduler jobs create http daily-screening \
-    --schedule="0 9 * * *" \
-    --uri=https://[REGION]-[PROJECT].cloudfunctions.net/rpo-controller \
-    --http-method=POST
+# 結果処理のデプロイ
+gcloud functions deploy rpo-result-processor \
+    --runtime python39 \
+    --trigger-topic bizreach-results \
+    --entry-point process_results
 ```
 
 ### エージェントの設定（貸与PC）
