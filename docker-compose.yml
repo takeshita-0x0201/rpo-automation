@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  webapp:
+    build: .
+    ports:
+      - "8000:8080"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - CLOUD_FUNCTIONS_URL=${CLOUD_FUNCTIONS_URL}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+    command: uvicorn src.web.main:app --host 0.0.0.0 --port 8080 --reload
