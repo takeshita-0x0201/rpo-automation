@@ -107,16 +107,16 @@ graph TD
 
 ```mermaid
 graph TD
-    A[RPOスタッフ] -->|1. 要件作成| B{入力方法選択}
+    A[RPOスタッフ] -->|1: 要件作成| B{入力方法選択}
     B -->|簡易版| C[Bizreach風フォーム]
     B -->|詳細版| D[自然言語で記述]
     
-    C -->|2. フォーム入力| E[構造化データ]
-    D -->|2. テキスト入力| F[Gemini API]
-    F -->|3. AI構造化| E
+    C -->|2: フォーム入力| E[構造化データ]
+    D -->|2: テキスト入力| F[Gemini API]
+    F -->|3: AI構造化| E
     
-    E -->|4. 確認画面| G[RPOスタッフが確認・修正]
-    G -->|5. 登録完了| H[(BigQuery保存)]
+    E -->|4: 確認画面| G[RPOスタッフが確認・修正]
+    G -->|5: 登録完了| H[(BigQuery保存)]
 ```
 
 **特徴的な機能:**
@@ -477,7 +477,8 @@ python -m src.ai.matching_engine --requirement-id [REQ_ID] --candidate-id [CAND_
 | 1.4 | **プロジェクト構成の理解** | | 完了 | Day 4 | - | **目的:** どこに何のコードがあるか把握する。<br> **作業内容:**<br> - `README`の「プロジェクト構成」を見る。<br> - `src`ディレクトリ内の各サブディレクトリ（`scraping`, `ai`, `data`, `sheets`, `utils`）の役割を推測する。<br> - 各ディレクトリ内のPythonファイル名を眺め、何をするためのファイルか想像してみる。<br> **完了の定義:** 各ディレクトリの役割を自分の言葉で説明できること。 |
 | 1.5 | **個別機能の実行（動作確認）** | | 完了 | Day 5 | - | **目的:** プロジェクトの主要な機能が自分のPCで正しく動くことを確認する。<br> **作業内容:**<br> - `README`の「使用方法」>「個別機能の実行」に記載のコマンドを、ダミーのID（例: `[GOOGLE_DOC_ID]`はテスト用のDocsのID）を使って実行してみる。<br> - エラーが出たら、メッセージを読み、環境変数の設定ミスなどがないか確認する。<br> **完了の定義:** 各コマンドがエラーなく実行できること（正常なエラーメッセージは除く）。 |
 | 1.6 | **Supabaseのセットアップ** | | 未着手 | Day 6 | Supabaseプロジェクト | **目的:** WebApp用のデータベースとユーザー認証基盤を準備する。<br> **作業内容:**<br> - [Supabase](https://supabase.com)でアカウント作成<br> - 新規プロジェクトを作成（リージョン: 東京推奨）<br> - プロジェクトURLとAPIキーを取得<br> - SQL Editorで初期テーブルを作成（`migrations/`ディレクトリ参照）<br> - Row Level Security (RLS)ポリシーの設定<br> - Pythonクライアントライブラリでの接続テスト<br> **完了の定義:** PythonからSupabaseに接続し、データの読み書きができること。<br> **参考:** [Supabase Python クイックスタート](https://supabase.com/docs/reference/python/introduction) |
-| 1.7 | **BigQueryのセットアップ** | | 未着手 | Day 7 | BigQueryデータセット | **目的:** 大規模データ分析用のデータウェアハウスを準備する。<br> **作業内容:**<br> - GCPコンソールでBigQueryデータセットを作成（`recruitment_data`, `company_learning`, `system_logs`）<br> - 初期テーブルスキーマを定義<br> - サンプルデータの投入テスト<br> - bqコマンドラインツールの動作確認<br> **完了の定義:** BigQueryにデータセットが作成され、サンプルクエリが実行できること。<br> **参考:** [BigQuery クイックスタート](https://cloud.google.com/bigquery/docs/quickstarts) |
+| 1.7 | **BigQueryのセットアップ** | | 未着手 | Day 7 | BigQueryデータセット | **目的:** 大規模データ分析用のデータウェアハウスを準備する。<br> **作業内容:**<br> - GCPコンソールでBigQueryデータセットを作成（`recruitment_data`, `client_learning`, `system_logs`）<br> - 初期テーブルスキーマを定義<br> - サンプルデータの投入テスト<br> - bqコマンドラインツールの動作確認<br> **完了の定義:** BigQueryにデータセットが作成され、サンプルクエリが実行できること。<br> **参考:** [BigQuery クイックスタート](https://cloud.google.com/bigquery/docs/quickstarts) |
+| 1.8 | **RPOビジネスモデルの理解** | | 未着手 | Day 7 | - | **目的:** システムを正しく使うためにRPO業務の流れを理解する。<br> **作業内容:**<br> - RPO（採用代行）の基本的な業務フローを理解<br> - クライアント企業との関係性を把握<br> - スタッフの役割分担（admin/manager/operator）を理解<br> - `migrations/001_initial_schema.sql`を読んでデータモデルを理解<br> **完了の定義:** RPO業務フローとシステムの役割を説明できること。 |
 
 ---
 ### フェーズ2: WebApp開発 (目標: 2週間)
@@ -486,10 +487,11 @@ python -m src.ai.matching_engine --requirement-id [REQ_ID] --candidate-id [CAND_
 
 | No. | タスク名 | 担当 | 状態 | 期限 | 成果物 | 詳細 |
 | :-- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 2.1 | **WebApp基盤構築** | | 未着手 | Day 8 | `src/web/main.py` | **目的:** FastAPIベースのWebアプリケーション基盤を構築する。<br> **作業内容:**<br> - FastAPIアプリケーションの初期設定<br> - Bootstrap/CSSの統合<br> - 基本的なルーティング設定<br> - CORS設定（必要に応じて）<br> **完了の定義:** `http://localhost:8000`でWebAppが起動し、基本画面が表示されること。 |
+| 2.1 | **WebApp基盤構築** | | 未着手 | Day 8 | `src/web/main.py` | **目的:** FastAPIベースのWebアプリケーション基盤を構築する。<br> **作業内容:**<br> - FastAPIアプリケーションの初期設定<br> - Supabase Authとの連携設定<br> - Bootstrap/CSSの統合<br> - 基本的なルーティング設定<br> - CORS設定（必要に応じて）<br> **完了の定義:** `http://localhost:8000`でWebAppが起動し、ログイン画面が表示されること。 |
 | 2.2 | **採用要件管理機能** | | 未着手 | Day 10 | `src/web/routers/requirements.py` | **目的:** Bizreach風フォームで採用要件を登録・管理する機能を実装。<br> **作業内容:**<br> - 採用要件入力フォームの作成（職種、年収、勤務地等）<br> - Cloud Functions APIとの連携<br> - 要件一覧表示機能<br> - 編集・削除機能<br> **完了の定義:** フォームから要件を登録し、一覧で確認できること。 |
 | 2.3 | **実行管理機能** | | 未着手 | Day 12 | `src/web/routers/jobs.py` | **目的:** スクレイピング実行の指示と状況モニタリング機能を実装。<br> **作業内容:**<br> - 実行ボタンのUI作成<br> - Cloud Functions API呼び出し<br> - ジョブステータスのポーリング処理<br> - プログレスバーの表示<br> **完了の定義:** 実行ボタンを押すとジョブが開始し、進捗が確認できること。 |
 | 2.4 | **結果確認機能** | | 未着手 | Day 14 | `src/web/routers/results.py` | **目的:** 処理結果の表示とGoogle Sheetsへのリンク機能を実装。<br> **作業内容:**<br> - 結果一覧表示画面の作成<br> - 統計情報の集計と表示<br> - Google Sheetsへのダイレクトリンク<br> - 完了通知の実装<br> **完了の定義:** 結果画面から処理結果を確認し、Sheetsにアクセスできること。 |
+| 2.5 | **クライアント管理機能** | | 未着手 | Day 15 | `src/web/routers/clients.py` | **目的:** クライアント企業の情報を管理する機能を実装。<br> **作業内容:**<br> - クライアント企業の登録・編集・削除機能<br> - 担当者情報の管理<br> - クライアント別の設定管理（検索デフォルト値など）<br> - 候補者送客履歴の表示<br> **完了の定義:** クライアント企業の情報を登録・管理できること。 |
 
 ---
 ### フェーズ3: バックエンド処理の実装 (目標: 2週間)
