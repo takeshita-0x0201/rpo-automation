@@ -3,6 +3,8 @@ playwright==1.40.0
 google-cloud-bigquery==3.13.0
 google-cloud-storage==2.10.0
 google-cloud-logging==3.8.0
+google-cloud-pubsub==2.18.4
+google-cloud-secret-manager==2.16.4
 
 # AI/ML APIs
 openai==1.6.1
@@ -18,21 +20,39 @@ google-auth-httplib2==0.1.1
 pandas==2.3.0
 pandas-gbq==0.19.2
 pydantic==2.5.2
+openpyxl==3.1.2
+numpy==1.26.2
 
-# Web framework (for webhooks/API if needed)
+# Web framework
 fastapi==0.104.1
-uvicorn==0.25.0
+uvicorn[standard]==0.25.0
+python-multipart==0.0.6
+jinja2==3.1.2
+aiofiles==23.2.1
 
 # Database
 supabase==2.5.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
+alembic==1.12.1
 
 # Utilities
 python-dotenv==1.0.0
 requests==2.31.0
+httpx==0.25.2
+aiohttp==3.9.1
 tenacity==8.2.3
 python-dateutil==2.8.2
+pyyaml==6.0.1
+click==8.1.7
+
+# Web scraping utilities
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Task queue (for background jobs)
+celery==5.3.4
+redis==5.0.1
 
 # Development dependencies
 pytest==7.4.3

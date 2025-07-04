@@ -9,7 +9,57 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - CLOUD_FUNCTIONS_URL=${CLOUD_FUNCTIONS_URL}
       - SECRET_KEY=${SECRET_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - WEBAPP_PORT=8080
+      - PUBSUB_TOPIC=${PUBSUB_TOPIC}
+      - PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}
     volumes:
       - ./src:/app/src
       - ./config:/app/config
+      - ./migrations:/app/migrations
+    env_file:
+      - .env
     command: uvicorn src.web.main:app --host 0.0.0.0 --port 8080 --reload
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - rpo-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - rpo-network
+    restart: unless-stopped
+
+  # 開発環境用のローカルPostgreSQL（本番ではSupabaseを使用）
+  postgres-dev:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=rpo_user
+      - POSTGRES_PASSWORD=rpo_password
+      - POSTGRES_DB=rpo_automation_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - rpo-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+networks:
+  rpo-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
