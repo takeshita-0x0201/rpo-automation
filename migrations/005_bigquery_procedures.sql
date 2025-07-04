@@ -68,6 +68,7 @@ CREATE OR REPLACE PROCEDURE client_learning.calculate_client_success_rate(
     IN client_id STRING,
     IN period_days INT64
 )
+OPTIONS(strict_mode=false)
 BEGIN
     DECLARE success_rate FLOAT64;
     DECLARE total_candidates INT64;
@@ -118,6 +119,7 @@ END;
 CREATE OR REPLACE PROCEDURE recruitment_data.clean_candidate_data(
     IN search_id STRING
 )
+OPTIONS(strict_mode=false)
 BEGIN
     -- 重複候補者の除去（同じBizreach IDを持つ最新のレコードのみ保持）
     DELETE FROM recruitment_data.candidates
@@ -150,6 +152,7 @@ END;
 
 -- 日次バッチ処理: 古いデータのアーカイブ
 CREATE OR REPLACE PROCEDURE system_logs.archive_old_logs()
+OPTIONS(strict_mode=false)
 BEGIN
     -- 90日以上前のAPIログをアーカイブテーブルに移動
     INSERT INTO system_logs.api_access_logs_archive
@@ -176,15 +179,16 @@ CREATE OR REPLACE TABLE FUNCTION recruitment_data.generate_daily_report(
 )
 AS (
     SELECT 
-        client_id,
+        r.client_id,
         COUNT(DISTINCT s.id) as searches_count,
         COUNT(DISTINCT c.id) as candidates_count,
         AVG(e.ai_score) as avg_ai_score,
         COUNT(DISTINCT CASE WHEN e.recommendation = 'highly_recommended' THEN c.id END) as highly_recommended_count,
         COUNT(DISTINCT CASE WHEN e.recommendation = 'recommended' THEN c.id END) as recommended_count
     FROM recruitment_data.searches s
+    JOIN recruitment_data.requirements r ON s.requirement_id = r.id
     JOIN recruitment_data.candidates c ON s.id = c.search_id
     JOIN recruitment_data.ai_evaluations e ON c.id = e.candidate_id
     WHERE DATE(s.started_at) = report_date
-    GROUP BY client_id
+    GROUP BY r.client_id
 );

@@ -92,3 +92,10 @@ credentials.json
 # Temporary files
 tmp/
 temp/
+
+# Test files
+*test*.py
+test_*.py
+
+# Editor history
+.history/

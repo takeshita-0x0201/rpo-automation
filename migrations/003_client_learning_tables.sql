@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS client_learning.prompt_templates (
 PARTITION BY DATE(created_at);
 
 -- ビュー作成: クライアント別の最新パフォーマンス
+-- 注: recruitment_dataデータセットのテーブル作成後に実行してください
+/*
 CREATE OR REPLACE VIEW client_learning.client_performance_summary AS
 SELECT 
     c.client_id,
@@ -109,14 +111,14 @@ SELECT
     COUNT(DISTINCT can.id) as total_candidates,
     AVG(e.ai_score) as avg_ai_score,
     COUNT(DISTINCT sh.id) as successful_hires,
-    AVG(at.accuracy_rate) as avg_accuracy_rate,
+    AVG(acc.accuracy_rate) as avg_accuracy_rate,
     MAX(s.started_at) as last_search_date
 FROM 
     recruitment_data.searches s
     JOIN recruitment_data.candidates can ON s.id = can.search_id
     JOIN recruitment_data.ai_evaluations e ON can.id = e.candidate_id
     LEFT JOIN client_learning.successful_hires sh ON can.id = sh.candidate_id
-    LEFT JOIN client_learning.ai_accuracy_tracking at ON s.client_id = at.client_id
+    LEFT JOIN client_learning.ai_accuracy_tracking acc ON s.client_id = acc.client_id
     LEFT JOIN (
         SELECT DISTINCT client_id, name as client_name 
         FROM recruitment_data.requirements
@@ -125,3 +127,4 @@ WHERE
     s.started_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
 GROUP BY 
     c.client_id, c.client_name;
+*/
