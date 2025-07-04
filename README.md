@@ -767,6 +767,19 @@ python -m src.agent.executor --client-id [CLIENT_ID] --job-id [JOB_ID]
 このセクションでは、本プロジェクトの開発タスクを詳細に分解したWBS（Work Breakdown Structure）を提示します。
 文系出身の新卒エンジニアが一人でタスクを理解し、実装まで進められるように、各タスクの目的、具体的な作業内容、完了の定義、参考情報を記載しています。
 
+### 進捗サマリー（2025年1月7日時点）
+- **フェーズ1: 環境構築と基礎理解** - 7/9タスク完了（78%）
+  - ✅ 開発環境、GCP、環境変数、プロジェクト構成理解、動作確認、Supabase、BigQuery
+  - ⏳ RPOビジネスモデル理解、Secret Manager設定
+- **フェーズ2: WebApp開発** - 4/5タスク着手（80%）
+  - ✅ WebApp基盤構築（完了）
+  - 🔄 採用要件管理、実行管理、結果確認機能（着手中）
+  - ⏳ クライアント管理
+- **フェーズ3: バックエンド処理** - 1/5タスク着手（20%）
+  - 🔄 Cloud Functions API（一部完了）
+  - ⏳ エージェント基盤、スクレイピング、AI判定、Sheets出力
+- **フェーズ4: 統合テストとデプロイ** - 未着手
+
 ### フェーズ1: 環境構築と基礎理解 (目標: 1週間)
 
 **目的:** プロジェクトを自分のPCで動かすための準備を整え、基本的な仕組みを理解する。
@@ -778,8 +791,8 @@ python -m src.agent.executor --client-id [CLIENT_ID] --job-id [JOB_ID]
 | 1.3 | **環境変数の設定** | | 完了 | Day 3 | `.env`ファイル | **目的:** APIキーなどの秘密情報をコードから分離し、安全に管理する。<br> **作業内容:**<br> - `cp .env.example .env` を実行し、`.env`ファイルを作成する。<br> - `README`の「必要な環境変数」セクションを参考に、ダウンロードしたGCPのキー情報や、別途用意したOpenAI/GeminiのAPIキーなどを`.env`ファイルに書き込む。<br> **完了の定義:** 全ての必須環境変数が`.env`ファイルに設定されていること。 |
 | 1.4 | **プロジェクト構成の理解** | | 完了 | Day 4 | - | **目的:** どこに何のコードがあるか把握する。<br> **作業内容:**<br> - `README`の「プロジェクト構成」を見る。<br> - `src`ディレクトリ内の各サブディレクトリ（`scraping`, `ai`, `data`, `sheets`, `utils`）の役割を推測する。<br> - 各ディレクトリ内のPythonファイル名を眺め、何をするためのファイルか想像してみる。<br> **完了の定義:** 各ディレクトリの役割を自分の言葉で説明できること。 |
 | 1.5 | **個別機能の実行（動作確認）** | | 完了 | Day 5 | - | **目的:** プロジェクトの主要な機能が自分のPCで正しく動くことを確認する。<br> **作業内容:**<br> - `README`の「使用方法」>「個別機能の実行」に記載のコマンドを、ダミーのID（例: `[GOOGLE_DOC_ID]`はテスト用のDocsのID）を使って実行してみる。<br> - エラーが出たら、メッセージを読み、環境変数の設定ミスなどがないか確認する。<br> **完了の定義:** 各コマンドがエラーなく実行できること（正常なエラーメッセージは除く）。 |
-| 1.6 | **Supabaseのセットアップ** | | 未着手 | Day 6 | Supabaseプロジェクト | **目的:** WebApp用のデータベースとユーザー認証基盤を準備する。<br> **作業内容:**<br> - [Supabase](https://supabase.com)でアカウント作成<br> - 新規プロジェクトを作成（リージョン: 東京推奨）<br> - プロジェクトURLとAPIキーを取得<br> - SQL Editorで初期テーブルを作成（`migrations/`ディレクトリ参照）<br> - Row Level Security (RLS)ポリシーの設定<br> - Pythonクライアントライブラリでの接続テスト<br> **完了の定義:** PythonからSupabaseに接続し、データの読み書きができること。<br> **参考:** [Supabase Python クイックスタート](https://supabase.com/docs/reference/python/introduction) |
-| 1.7 | **BigQueryのセットアップ** | | 未着手 | Day 7 | BigQueryデータセット | **目的:** 大規模データ分析用のデータウェアハウスを準備する。<br> **作業内容:**<br> - GCPコンソールでBigQueryデータセットを作成（`recruitment_data`, `client_learning`, `system_logs`）<br> - 初期テーブルスキーマを定義<br> - サンプルデータの投入テスト<br> - bqコマンドラインツールの動作確認<br> **完了の定義:** BigQueryにデータセットが作成され、サンプルクエリが実行できること。<br> **参考:** [BigQuery クイックスタート](https://cloud.google.com/bigquery/docs/quickstarts) |
+| 1.6 | **Supabaseのセットアップ** | | 完了 | Day 6 | Supabaseプロジェクト | **目的:** WebApp用のデータベースとユーザー認証基盤を準備する。<br> **作業内容:**<br> - [Supabase](https://supabase.com)でアカウント作成<br> - 新規プロジェクトを作成（リージョン: 東京推奨）<br> - プロジェクトURLとAPIキーを取得<br> - SQL Editorで初期テーブルを作成（`migrations/`ディレクトリ参照）<br> - Row Level Security (RLS)ポリシーの設定<br> - Pythonクライアントライブラリでの接続テスト<br> **完了の定義:** PythonからSupabaseに接続し、データの読み書きができること。<br> **参考:** [Supabase Python クイックスタート](https://supabase.com/docs/reference/python/introduction) |
+| 1.7 | **BigQueryのセットアップ** | | 完了 | Day 7 | BigQueryデータセット | **目的:** 大規模データ分析用のデータウェアハウスを準備する。<br> **作業内容:**<br> - GCPコンソールでBigQueryデータセットを作成（`recruitment_data`, `client_learning`, `system_logs`）<br> - 初期テーブルスキーマを定義<br> - サンプルデータの投入テスト<br> - bqコマンドラインツールの動作確認<br> **完了の定義:** BigQueryにデータセットが作成され、サンプルクエリが実行できること。<br> **参考:** [BigQuery クイックスタート](https://cloud.google.com/bigquery/docs/quickstarts) |
 | 1.8 | **RPOビジネスモデルの理解** | | 未着手 | Day 7 | - | **目的:** システムを正しく使うためにRPO業務の流れを理解する。<br> **作業内容:**<br> - RPO（採用代行）の基本的な業務フローを理解<br> - クライアント企業との関係性を把握<br> - スタッフの役割分担（admin/manager/operator）を理解<br> - `migrations/001_initial_schema.sql`を読んでデータモデルを理解<br> **完了の定義:** RPO業務フローとシステムの役割を説明できること。 |
 | 1.9 | **Secret Managerの設定** | | 未着手 | Day 7 | Secret設定完了 | **目的:** 本番環境の認証情報を安全に管理する。<br> **作業内容:**<br> - GCPコンソールでSecret Managerを有効化<br> - Bizreach認証情報をSecretとして登録<br> - APIキー類をSecretとして登録<br> - サービスアカウントにアクセス権限付与<br> - Pythonコードからの読み取りテスト<br> **完了の定義:** コードからSecretを取得できること。<br> **参考:** [Secret Manager クイックスタート](https://cloud.google.com/secret-manager/docs/quickstart) |
 
@@ -790,10 +803,10 @@ python -m src.agent.executor --client-id [CLIENT_ID] --job-id [JOB_ID]
 
 | No. | タスク名 | 担当 | 状態 | 期限 | 成果物 | 詳細 |
 | :-- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 2.1 | **WebApp基盤構築** | | 未着手 | Day 8 | `src/web/main.py` | **目的:** FastAPIベースのWebアプリケーション基盤を構築する。<br> **作業内容:**<br> - FastAPIアプリケーションの初期設定<br> - Supabase Authとの連携設定<br> - Bootstrap/CSSの統合<br> - 基本的なルーティング設定<br> - CORS設定（必要に応じて）<br> **完了の定義:** `http://localhost:8000`でWebAppが起動し、ログイン画面が表示されること。 |
-| 2.2 | **採用要件管理機能** | | 未着手 | Day 10 | `src/web/routers/requirements.py` | **目的:** Bizreach風フォームで採用要件を登録・管理する機能を実装。<br> **作業内容:**<br> - 採用要件入力フォームの作成（職種、年収、勤務地等）<br> - Cloud Functions APIとの連携<br> - 要件一覧表示機能<br> - 編集・削除機能<br> **完了の定義:** フォームから要件を登録し、一覧で確認できること。 |
-| 2.3 | **実行管理機能** | | 未着手 | Day 12 | `src/web/routers/jobs.py` | **目的:** スクレイピング実行の指示と状況モニタリング機能を実装。<br> **作業内容:**<br> - 実行ボタンのUI作成<br> - Cloud Functions API呼び出し<br> - ジョブステータスのポーリング処理<br> - プログレスバーの表示<br> **完了の定義:** 実行ボタンを押すとジョブが開始し、進捗が確認できること。 |
-| 2.4 | **結果確認機能** | | 未着手 | Day 14 | `src/web/routers/results.py` | **目的:** 処理結果の表示とGoogle Sheetsへのリンク機能を実装。<br> **作業内容:**<br> - 結果一覧表示画面の作成<br> - 統計情報の集計と表示<br> - Google Sheetsへのダイレクトリンク<br> - 完了通知の実装<br> **完了の定義:** 結果画面から処理結果を確認し、Sheetsにアクセスできること。 |
+| 2.1 | **WebApp基盤構築** | | 完了 | Day 8 | `src/web/main.py` | **目的:** FastAPIベースのWebアプリケーション基盤を構築する。<br> **作業内容:**<br> - FastAPIアプリケーションの初期設定<br> - Supabase Authとの連携設定<br> - Bootstrap/CSSの統合<br> - 基本的なルーティング設定<br> - CORS設定（必要に応じて）<br> **完了の定義:** `http://localhost:8000`でWebAppが起動し、ログイン画面が表示されること。 |
+| 2.2 | **採用要件管理機能** | | 着手中 | Day 10 | `src/web/routers/requirements.py` | **目的:** Bizreach風フォームで採用要件を登録・管理する機能を実装。<br> **作業内容:**<br> - 採用要件入力フォームの作成（職種、年収、勤務地等）<br> - Cloud Functions APIとの連携<br> - 要件一覧表示機能<br> - 編集・削除機能<br> **完了の定義:** フォームから要件を登録し、一覧で確認できること。 |
+| 2.3 | **実行管理機能** | | 着手中 | Day 12 | `src/web/routers/jobs.py` | **目的:** スクレイピング実行の指示と状況モニタリング機能を実装。<br> **作業内容:**<br> - 実行ボタンのUI作成<br> - Cloud Functions API呼び出し<br> - ジョブステータスのポーリング処理<br> - プログレスバーの表示<br> **完了の定義:** 実行ボタンを押すとジョブが開始し、進捗が確認できること。 |
+| 2.4 | **結果確認機能** | | 着手中 | Day 14 | `src/web/routers/results.py` | **目的:** 処理結果の表示とGoogle Sheetsへのリンク機能を実装。<br> **作業内容:**<br> - 結果一覧表示画面の作成<br> - 統計情報の集計と表示<br> - Google Sheetsへのダイレクトリンク<br> - 完了通知の実装<br> **完了の定義:** 結果画面から処理結果を確認し、Sheetsにアクセスできること。 |
 | 2.5 | **クライアント管理機能** | | 未着手 | Day 15 | `src/web/routers/clients.py` | **目的:** クライアント企業の情報を管理する機能を実装。<br> **作業内容:**<br> - クライアント企業の登録・編集・削除機能<br> - 担当者情報の管理<br> - クライアント別の設定管理（検索デフォルト値など）<br> - 候補者送客履歴の表示<br> **完了の定義:** クライアント企業の情報を登録・管理できること。 |
 
 ---
@@ -805,7 +818,7 @@ python -m src.agent.executor --client-id [CLIENT_ID] --job-id [JOB_ID]
 | :-- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 3.1 | **エージェント基盤構築** | | 未着手 | Day 18 | `src/agent/agent.py` | **目的:** 貸与PC上で動作するエージェントの基盤を構築。<br> **作業内容:**<br> - Pub/Subクライアントのセットアップ<br> - ポーリング処理の実装<br> - エラーハンドリング<br> - ログ出力設定<br> **完了の定義:** エージェントが起動し、Pub/Subからメッセージを受信できること。 |
 | 3.2 | **Bizreachスクレイピング** | | 未着手 | Day 20 | `src/scraping/bizreach_scraper.py` | **目的:** Bizreachの候補者検索と情報取得を自動化。<br> **作業内容:**<br> - Playwrightでのログイン処理<br> - 検索条件の入力自動化<br> - 候補者情報の抽出<br> - データの構造化<br> **完了の定義:** 検索条件を渡すと候補者情報が取得できること。 |
-| 3.3 | **Cloud Functions API** | | 未着手 | Day 22 | Cloud Functions | **目的:** WebAppとエージェントをつなぐAPIを実装。<br> **作業内容:**<br> - ジョブ作成APIの実装<br> - BigQuery操作処理<br> - Pub/Subメッセージ送信<br> - 結果受信処理<br> **完了の定義:** WebAppからのAPI呼び出しでジョブが作成されること。 |
+| 3.3 | **Cloud Functions API** | | 一部完了 | Day 22 | Cloud Functions | **目的:** WebAppとエージェントをつなぐAPIを実装。<br> **作業内容:**<br> - ジョブ作成APIの実装<br> - BigQuery操作処理<br> - Pub/Subメッセージ送信<br> - 結果受信処理<br> **完了の定義:** WebAppからのAPI呼び出しでジョブが作成されること。 |
 | 3.4 | **AIマッチング判定** | | 未着手 | Day 24 | `src/ai/matching_engine.py` | **目的:** ChatGPT-4oを使ったマッチング判定の実装。<br> **作業内容:**<br> - OpenAI APIクライアント作成<br> - プロンプトエンジニアリング<br> - 判定結果の構造化<br> - スコアリングロジック<br> **完了の定義:** 要件と候補者情報からマッチングスコアが算出されること。 |
 | 3.5 | **Google Sheets出力** | | 未着手 | Day 26 | `src/sheets/writer.py` | **目的:** AI判定結果をSheetsに出力する機能の実装。<br> **作業内容:**<br> - Google Sheets APIセットアップ<br> - データフォーマット定義<br> - 行追加処理の実装<br> - エラーハンドリング<br> **完了の定義:** 結果データがSheetsに正しく追記されること。 |
 

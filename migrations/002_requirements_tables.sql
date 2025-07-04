@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS recruitment_data.ai_evaluations (
     prompt_version STRING
 )
 PARTITION BY DATE(evaluated_at)
-CLUSTER BY search_id, ai_score;
+CLUSTER BY search_id, recommendation;
 
 -- 要件ドキュメント（原本管理）
 CREATE TABLE IF NOT EXISTS recruitment_data.requirement_documents (
