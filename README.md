@@ -255,53 +255,129 @@ sequenceDiagram
 #### 1. Supabase (PostgreSQL互換)
 **目的**: WebAppのリアルタイム処理とトランザクション管理
 
-**主要テーブル**:
-- **ユーザー管理**
-  - Supabase Auth利用（組み込み認証）
-  - `profiles`: RPOスタッフの拡張情報（氏名、役職等）
-  - `clients`: クライアント企業マスタ（実行環境設定含む）
+##### Supabaseテーブル詳細設計
 
-- **ジョブ実行管理**
-  - `jobs`: 実行ジョブ（ID、要件ID、ステータス、作成日時）
-  - `job_status`: 実行状況のリアルタイム更新
-  - `retry_queue`: 失敗ジョブのリトライ管理
+###### profiles（RPOスタッフプロファイル）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK, FK(auth.users) | Supabase AuthのユーザーID |
+| full_name | TEXT | | スタッフの氏名 |
+| role | TEXT | CHECK | 役職（admin/manager/operator） |
+| department | TEXT | | 所属部署 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
 
-- **システム設定**
-  - `client_settings`: クライアント企業別の設定値
-  - `notification_settings`: 通知設定
-  - `scraping_configs`: スクレイピング実行設定
+###### clients（クライアント企業）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | クライアントID |
+| name | TEXT | NOT NULL | 企業名 |
+| industry | TEXT | | 業界 |
+| size | TEXT | | 企業規模 |
+| contact_person | TEXT | | 担当者名 |
+| contact_email | TEXT | | 担当者メール |
+| allows_direct_scraping | BOOLEAN | DEFAULT false | 直接スクレイピング許可フラグ |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
 
-**運用方針**:
-- 無料プラン（500MB、無制限API呼び出し）
-- リアルタイム購読でステータス更新を即座に反映
-- スタッフの役職に応じたアクセス制御
-- 自動バックアップ（有料プランで利用可）
+###### jobs（実行ジョブ）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | ジョブID |
+| requirement_id | TEXT | NOT NULL | 採用要件ID（BigQuery参照） |
+| client_id | UUID | FK(clients) | クライアントID |
+| status | TEXT | CHECK | ステータス（pending/running/completed/failed） |
+| created_by | UUID | FK(auth.users) | 作成者 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
+| completed_at | TIMESTAMPTZ | | 完了日時 |
+| error_message | TEXT | | エラーメッセージ |
+| candidate_count | INTEGER | DEFAULT 0 | 取得候補者数 |
+
+###### job_status_history（ジョブステータス履歴）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | 履歴ID |
+| job_id | UUID | FK(jobs) | ジョブID |
+| status | TEXT | NOT NULL | ステータス |
+| message | TEXT | | メッセージ |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+
+###### client_settings（クライアント設定）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| client_id | UUID | PK, FK(clients) | クライアントID |
+| search_defaults | JSONB | DEFAULT '{}' | 検索デフォルト値 |
+| scoring_weights | JSONB | DEFAULT '{}' | スコアリング重み |
+| custom_terms | JSONB | DEFAULT '{}' | カスタム用語辞書 |
+| max_candidates_per_batch | INTEGER | DEFAULT 80 | バッチあたり最大候補者数 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
+
+###### Row Level Security (RLS) ポリシー
+- **profiles**: 全員が閲覧可能、本人のみ更新可能
+- **clients**: 全スタッフが閲覧可能、admin/managerのみ編集可能
+- **jobs**: 全スタッフが閲覧・編集可能
+- **client_settings**: admin/managerのみ編集可能
 
 #### 2. BigQuery
 **目的**: 大規模データの蓄積と分析
 
-**主要データセット**:
-- **採用データ** (`recruitment_data`)
-  - `requirements`: 採用要件マスタ（原本テキスト、構造化JSON、クライアントID）
-  - `candidates`: 候補者情報（プロフィール、スキル、経歴）
-  - `ai_evaluations`: AI判定結果（スコア、理由、判定日時）
-  - `screening_sessions`: スクレイピング実行履歴
+##### BigQueryテーブル詳細設計
 
-- **クライアント学習データ** (`client_learning`)
-  - `client_patterns`: クライアント企業別の採用パターン（用語定義、重視項目）
-  - `successful_hires`: 採用成功事例
-  - `feedback_history`: フィードバック履歴
+###### recruitment_data.requirements（採用要件）
+| カラム名 | 型 | 説明 |
+|---------|----|----|
+| id | STRING | 要件ID |
+| client_id | STRING | クライアントID |
+| title | STRING | 募集タイトル |
+| position | STRING | 職種 |
+| description | STRING | 詳細説明 |
+| required_skills | ARRAY<STRING> | 必須スキル |
+| preferred_skills | ARRAY<STRING> | 歓迎スキル |
+| experience_years | INTEGER | 必要経験年数 |
+| education_level | STRING | 学歴要件 |
+| salary_range | STRUCT | 給与レンジ |
+| work_location | STRING | 勤務地 |
+| employment_type | STRING | 雇用形態 |
+| original_text | STRING | 原本テキスト |
+| structured_data | JSON | 構造化データ |
+| created_at | TIMESTAMP | 作成日時 |
+| created_by | STRING | 作成者ID |
 
-- **システムログ** (`system_logs`)
-  - `audit_logs`: 監査ログ（全操作履歴）
-  - `api_access_logs`: APIアクセスログ
-  - `performance_metrics`: パフォーマンス指標
+###### recruitment_data.candidates（候補者）
+| カラム名 | 型 | 説明 |
+|---------|----|----|
+| id | STRING | 候補者ID |
+| search_id | STRING | 検索ID |
+| name | STRING | 候補者名 |
+| current_title | STRING | 現在の役職 |
+| current_company | STRING | 現在の企業 |
+| experience_years | INTEGER | 経験年数 |
+| skills | ARRAY<STRING> | スキルセット |
+| education | STRING | 学歴 |
+| profile_url | STRING | プロフィールURL |
+| scraped_data | JSON | スクレイピングデータ |
+| scraped_at | TIMESTAMP | 取得日時 |
 
-**運用方針**:
-- パーティション分割（日付別）でクエリコストを削減
-- 90日以上前のデータは自動的にコールドストレージへ移行
-- スケジュールドクエリで日次集計を自動化
-- データポータルでダッシュボード作成
+###### recruitment_data.ai_evaluations（AI評価）
+| カラム名 | 型 | 説明 |
+|---------|----|----|
+| id | STRING | 評価ID |
+| candidate_id | STRING | 候補者ID |
+| requirement_id | STRING | 要件ID |
+| ai_score | FLOAT64 | AIスコア（0-100） |
+| match_reasons | ARRAY<STRING> | マッチング理由 |
+| concerns | ARRAY<STRING> | 懸念点 |
+| recommendation | STRING | 推奨度 |
+| evaluated_at | TIMESTAMP | 評価日時 |
+| model_version | STRING | AIモデルバージョン |
+
+##### データパーティショニング戦略
+- **requirements**: created_at で日付パーティション
+- **candidates**: scraped_at で日付パーティション
+- **ai_evaluations**: evaluated_at で日付パーティション
+- 90日以上古いデータは自動的にコールドストレージへ
 
 #### データベース連携
 - Supabaseの実行完了ジョブは、バッチでBigQueryへ転送
@@ -415,6 +491,199 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 依存関係のインストール
 pip install -r requirements.txt
 ```
+
+### Supabaseプロジェクトのセットアップ
+
+#### 1. Supabaseアカウントの作成
+1. [Supabase](https://supabase.com)にアクセス
+2. GitHubアカウントまたはメールでサインアップ
+3. 新規プロジェクトを作成
+   - プロジェクト名: `rpo-automation`
+   - データベースパスワード: 安全なパスワードを設定（後で使用）
+   - リージョン: `Northeast Asia (Tokyo)` を推奨
+   - 料金プラン: Free tier（開発・テスト用）
+
+#### 2. プロジェクト情報の取得
+プロジェクトダッシュボードから以下の情報を取得：
+- **Project URL**: `https://xxxxxxxxxxxxx.supabase.co`
+- **Anon key**: `eyJhbGciOiJS...`（公開可能）
+- **Service key**: `eyJhbGciOiJS...`（秘密、サーバー側のみ）
+
+これらの値を`.env`ファイルに設定：
+```bash
+SUPABASE_URL=https://xxxxxxxxxxxxx.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJS...
+SUPABASE_SERVICE_KEY=eyJhbGciOiJS...
+```
+
+#### 3. データベーススキーマの作成
+1. Supabaseダッシュボードの「SQL Editor」を開く
+2. 「New query」をクリック
+3. 以下のSQLを実行してテーブルを作成：
+
+```sql
+-- migrations/001_initial_schema.sql の内容をコピー＆ペースト
+```
+
+または、プロジェクトのSQLファイルを直接実行：
+```bash
+# Supabase CLIを使用する場合（要インストール）
+supabase db push --db-url "postgresql://postgres:[PASSWORD]@db.[PROJECT_ID].supabase.co:5432/postgres"
+```
+
+#### 4. 認証設定
+1. Authentication → Settings で以下を確認：
+   - Email認証が有効になっていること
+   - サイトURL: `http://localhost:8000`（開発環境）
+   - リダイレクトURL: `http://localhost:8000/auth/callback`
+
+2. Authentication → Users でテストユーザーを作成：
+   - Email: `admin@example.com`
+   - Password: 任意のパスワード
+
+#### 5. 初期データの投入
+SQL Editorで以下を実行し、管理者プロファイルを作成：
+
+```sql
+-- 管理者ユーザーのプロファイル作成（UIDは実際のユーザーIDに置き換え）
+INSERT INTO profiles (id, full_name, role, department)
+VALUES (
+    'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',  -- Auth → Users から取得
+    'システム管理者',
+    'admin',
+    'システム部'
+);
+
+-- テスト用クライアント企業の作成
+INSERT INTO clients (name, industry, size, contact_person, contact_email, allows_direct_scraping)
+VALUES 
+    ('株式会社テストA', 'IT', '100-500名', '採用担当A', 'recruit-a@example.com', true),
+    ('株式会社テストB', '製造業', '500-1000名', '採用担当B', 'recruit-b@example.com', false);
+```
+
+#### 6. 接続テスト
+Pythonで接続確認：
+
+```python
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_ANON_KEY")
+
+supabase: Client = create_client(url, key)
+
+# テスト: クライアント一覧を取得
+response = supabase.table('clients').select("*").execute()
+print(response.data)
+```
+
+### BigQueryプロジェクトのセットアップ
+
+#### 1. BigQuery APIの有効化
+1. [GCPコンソール](https://console.cloud.google.com)にアクセス
+2. 「APIとサービス」→「ライブラリ」
+3. 「BigQuery API」を検索して有効化
+4. 「Cloud Resource Manager API」も同様に有効化
+
+#### 2. データセットの作成
+```bash
+# gcloud CLIを使用する場合
+gcloud config set project YOUR_PROJECT_ID
+
+# データセットの作成
+bq mk --location=asia-northeast1 --dataset recruitment_data
+bq mk --location=asia-northeast1 --dataset client_learning  
+bq mk --location=asia-northeast1 --dataset system_logs
+```
+
+または、GCPコンソールから：
+1. BigQuery → 「データセットを作成」
+2. データセットID: `recruitment_data`、`client_learning`、`system_logs`
+3. データのロケーション: `asia-northeast1`（東京）
+
+#### 3. テーブルの作成
+プロジェクトのマイグレーションファイルを使用：
+
+```bash
+# recruitment_dataデータセット
+bq query --use_legacy_sql=false < migrations/002_requirements_tables.sql
+
+# client_learningデータセット
+bq query --use_legacy_sql=false < migrations/003_client_learning_tables.sql
+
+# system_logsデータセット
+bq query --use_legacy_sql=false < migrations/004_system_logs_tables.sql
+
+# ストアドプロシージャとUDF
+bq query --use_legacy_sql=false < migrations/005_bigquery_procedures.sql
+```
+
+#### 4. サービスアカウントの作成
+1. IAMと管理 → サービスアカウント → 「作成」
+2. サービスアカウント名: `rpo-automation-bigquery`
+3. 役割を付与:
+   - BigQuery データ編集者
+   - BigQuery ジョブユーザー
+4. キーを作成（JSON形式）してダウンロード
+
+#### 5. 環境変数の設定
+ダウンロードしたキーファイルのパスを環境変数に設定：
+
+```bash
+# .envファイル
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/service-account-key.json
+BIGQUERY_PROJECT_ID=your-project-id
+BIGQUERY_DATASET=recruitment_data
+```
+
+#### 6. 接続テスト
+Pythonで接続確認：
+
+```python
+from google.cloud import bigquery
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# クライアントの初期化
+client = bigquery.Client(project=os.getenv("BIGQUERY_PROJECT_ID"))
+
+# データセット一覧の取得
+datasets = list(client.list_datasets())
+print("Datasets in project:")
+for dataset in datasets:
+    print(f"  {dataset.dataset_id}")
+
+# テーブル一覧の取得
+dataset_ref = client.dataset("recruitment_data")
+tables = list(client.list_tables(dataset_ref))
+print(f"\nTables in recruitment_data:")
+for table in tables:
+    print(f"  {table.table_id}")
+```
+
+#### 7. スケジュールドクエリの設定（オプション）
+日次レポート生成などの定期処理を設定：
+
+1. BigQueryコンソール → 「スケジュールドクエリ」
+2. 「スケジュールドクエリを作成」
+3. クエリ例：
+```sql
+CALL system_logs.archive_old_logs();
+```
+4. スケジュール: 毎日午前2時（JST）
+
+#### 8. コスト管理のベストプラクティス
+- **パーティショニング**: 日付カラムでパーティション分割済み
+- **クラスタリング**: 頻繁に使用するカラムでクラスタリング済み
+- **有効期限**: 90日以上古いデータは自動アーカイブ
+- **クエリの最適化**: 必要なカラムのみSELECT
+- **プレビュー**: クエリ実行前にコスト見積もりを確認
 
 ### 環境設定
 
