@@ -19,6 +19,7 @@ CREATE TABLE clients (
     size TEXT,
     contact_person TEXT,
     contact_email TEXT,
+    allows_direct_scraping BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
@@ -61,6 +62,7 @@ CREATE TABLE client_settings (
     search_defaults JSONB DEFAULT '{}',
     scoring_weights JSONB DEFAULT '{}',
     custom_terms JSONB DEFAULT '{}',
+    max_candidates_per_batch INTEGER DEFAULT 80,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );

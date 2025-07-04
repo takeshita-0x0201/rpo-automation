@@ -126,10 +126,11 @@ graph TD
 ### Phase 2: 候補者検索の実行
 
 1. RPOスタッフが登録済み要件から選択
-2. Cloud FunctionsがPub/Sub経由でジョブを送信
-3. 貸与PCエージェントが定期的にポーリング
-4. Bizreachで自動検索・データ取得
-5. 結果をPub/Sub経由でクラウドに送信
+2. クライアント設定に基づいて実行方式を判定
+   - `allows_direct_scraping = true` → Cloud Functions直接実行
+   - `allows_direct_scraping = false` → エージェント経由実行
+3. 選択された方式で候補者検索を実行
+4. 結果をBigQueryに保存
 
 ### Phase 3: AI判定とレポート生成
 
@@ -240,10 +241,12 @@ sequenceDiagram
 ### データフロー
 
 1. **採用要件取得**: Webフォームまたは自然言語入力から要件を取得しJSON構造化
-2. **候補者検索**: 貸与PCエージェントがBizreachで自動検索・情報取得
+2. **候補者検索**: クライアント設定に応じて実行方式を選択
+   - セキュリティ制約なし → Cloud Functions直接実行（〜90人、9分以内）
+   - セキュリティ制約あり → 貸与PCエージェント経由（人数・時間無制限）
 3. **AI判定**: 要件と候補者のマッチング判定（ChatGPT-4o）
 4. **結果出力**: Google Sheetsへ結果を記録
-5. **フィードバック**: 企業別の採用パターンを学習データとして蓄積
+5. **フィードバック**: クライアント別の採用パターンを学習データとして蓄積
 
 ### データベース設計
 
@@ -255,8 +258,8 @@ sequenceDiagram
 **主要テーブル**:
 - **ユーザー管理**
   - Supabase Auth利用（組み込み認証）
-  - `profiles`: ユーザー拡張情報（企業ID、役職等）
-  - `user_companies`: ユーザーと企業の紐付け
+  - `profiles`: RPOスタッフの拡張情報（氏名、役職等）
+  - `clients`: クライアント企業マスタ（実行環境設定含む）
 
 - **ジョブ実行管理**
   - `jobs`: 実行ジョブ（ID、要件ID、ステータス、作成日時）
@@ -264,13 +267,14 @@ sequenceDiagram
   - `retry_queue`: 失敗ジョブのリトライ管理
 
 - **システム設定**
-  - `company_settings`: 企業別の設定値
+  - `client_settings`: クライアント企業別の設定値
   - `notification_settings`: 通知設定
+  - `scraping_configs`: スクレイピング実行設定
 
 **運用方針**:
 - 無料プラン（500MB、無制限API呼び出し）
 - リアルタイム購読でステータス更新を即座に反映
-- Row Level Security (RLS)で企業間のデータ分離
+- スタッフの役職に応じたアクセス制御
 - 自動バックアップ（有料プランで利用可）
 
 #### 2. BigQuery
@@ -278,13 +282,13 @@ sequenceDiagram
 
 **主要データセット**:
 - **採用データ** (`recruitment_data`)
-  - `requirements`: 採用要件マスタ（原本テキスト、構造化JSON、企業ID）
+  - `requirements`: 採用要件マスタ（原本テキスト、構造化JSON、クライアントID）
   - `candidates`: 候補者情報（プロフィール、スキル、経歴）
   - `ai_evaluations`: AI判定結果（スコア、理由、判定日時）
   - `screening_sessions`: スクレイピング実行履歴
 
-- **企業学習データ** (`company_learning`)
-  - `company_patterns`: 企業別の採用パターン（用語定義、重視項目）
+- **クライアント学習データ** (`client_learning`)
+  - `client_patterns`: クライアント企業別の採用パターン（用語定義、重視項目）
   - `successful_hires`: 採用成功事例
   - `feedback_history`: フィードバック履歴
 
@@ -300,9 +304,31 @@ sequenceDiagram
 - データポータルでダッシュボード作成
 
 #### データベース連携
-- Cloud SQLの実行完了ジョブは、バッチでBigQueryへ転送
-- BigQueryの集計結果は、必要に応じてCloud SQLにキャッシュ
-- マルチテナントは`company_id`による論理分離で実現
+- Supabaseの実行完了ジョブは、バッチでBigQueryへ転送
+- BigQueryの集計結果は、必要に応じてSupabaseにキャッシュ
+- クライアント企業のデータは`client_id`で管理
+
+### セキュリティ設計
+
+#### 環境別の認証情報管理
+| 環境 | 管理方法 | 用途 |
+|------|---------|-----|
+| 開発環境 | .env.development | テストアカウントのみ使用 |
+| エージェントPC | ローカル.env | 貸与PC内で安全に管理 |
+| 本番Cloud | Secret Manager | 暗号化して保管、IAMで権限制御 |
+
+#### アクセス制御
+- **最小権限の原則**: 各サービスアカウントは必要最小限の権限のみ付与
+- **役職別アクセス**: 
+  - operator: 自分の担当クライアントのみ
+  - manager: 全クライアントの閲覧・実行
+  - admin: システム設定変更権限
+
+#### 監査とコンプライアンス
+- 全API呼び出しをBigQuery audit_logsに記録
+- 個人情報へのアクセスは詳細ログを保持
+- ログは90日間保持後、自動アーカイブ
+- 定期的なセキュリティレビューの実施
 
 ## プロジェクト構成（詳細）
 
@@ -417,11 +443,12 @@ cp .env.example .env
 #### クラウド環境（Cloud Functions）
 - `GOOGLE_CLOUD_PROJECT`: GCPプロジェクトID
 - `BIGQUERY_DATASET`: BigQueryデータセット名
-- `OPENAI_API_KEY`: OpenAI APIキー
-- `GEMINI_API_KEY`: Gemini APIキー
+- `OPENAI_API_KEY`: OpenAI APIキー（Secret Manager推奨）
+- `GEMINI_API_KEY`: Gemini APIキー（Secret Manager推奨）
 - `GOOGLE_SHEETS_ID`: 出力先のGoogle Sheets ID
 - `PUBSUB_TOPIC`: Pub/Subトピック名
 - `PUBSUB_SUBSCRIPTION`: Pub/Subサブスクリプション名
+- `SECRET_MANAGER_PROJECT`: Secret Manager用プロジェクトID
 
 #### エージェント環境（貸与PC）
 - `GOOGLE_CLOUD_PROJECT`: GCPプロジェクトID
@@ -458,6 +485,12 @@ python -m src.data.structure_requirements --text "Pythonエンジニア募集...
 
 # AI判定テスト
 python -m src.ai.matching_engine --requirement-id [REQ_ID] --candidate-id [CAND_ID]
+
+# スクレイピング実行（直接実行）
+python -m src.scraping.direct_executor --client-id [CLIENT_ID] --criteria "Python 5年"
+
+# スクレイピング実行（エージェント経由）
+python -m src.agent.executor --client-id [CLIENT_ID] --job-id [JOB_ID]
 ```
 
 ## WBS（作業計画書）
@@ -479,6 +512,7 @@ python -m src.ai.matching_engine --requirement-id [REQ_ID] --candidate-id [CAND_
 | 1.6 | **Supabaseのセットアップ** | | 未着手 | Day 6 | Supabaseプロジェクト | **目的:** WebApp用のデータベースとユーザー認証基盤を準備する。<br> **作業内容:**<br> - [Supabase](https://supabase.com)でアカウント作成<br> - 新規プロジェクトを作成（リージョン: 東京推奨）<br> - プロジェクトURLとAPIキーを取得<br> - SQL Editorで初期テーブルを作成（`migrations/`ディレクトリ参照）<br> - Row Level Security (RLS)ポリシーの設定<br> - Pythonクライアントライブラリでの接続テスト<br> **完了の定義:** PythonからSupabaseに接続し、データの読み書きができること。<br> **参考:** [Supabase Python クイックスタート](https://supabase.com/docs/reference/python/introduction) |
 | 1.7 | **BigQueryのセットアップ** | | 未着手 | Day 7 | BigQueryデータセット | **目的:** 大規模データ分析用のデータウェアハウスを準備する。<br> **作業内容:**<br> - GCPコンソールでBigQueryデータセットを作成（`recruitment_data`, `client_learning`, `system_logs`）<br> - 初期テーブルスキーマを定義<br> - サンプルデータの投入テスト<br> - bqコマンドラインツールの動作確認<br> **完了の定義:** BigQueryにデータセットが作成され、サンプルクエリが実行できること。<br> **参考:** [BigQuery クイックスタート](https://cloud.google.com/bigquery/docs/quickstarts) |
 | 1.8 | **RPOビジネスモデルの理解** | | 未着手 | Day 7 | - | **目的:** システムを正しく使うためにRPO業務の流れを理解する。<br> **作業内容:**<br> - RPO（採用代行）の基本的な業務フローを理解<br> - クライアント企業との関係性を把握<br> - スタッフの役割分担（admin/manager/operator）を理解<br> - `migrations/001_initial_schema.sql`を読んでデータモデルを理解<br> **完了の定義:** RPO業務フローとシステムの役割を説明できること。 |
+| 1.9 | **Secret Managerの設定** | | 未着手 | Day 7 | Secret設定完了 | **目的:** 本番環境の認証情報を安全に管理する。<br> **作業内容:**<br> - GCPコンソールでSecret Managerを有効化<br> - Bizreach認証情報をSecretとして登録<br> - APIキー類をSecretとして登録<br> - サービスアカウントにアクセス権限付与<br> - Pythonコードからの読み取りテスト<br> **完了の定義:** コードからSecretを取得できること。<br> **参考:** [Secret Manager クイックスタート](https://cloud.google.com/secret-manager/docs/quickstart) |
 
 ---
 ### フェーズ2: WebApp開発 (目標: 2週間)
