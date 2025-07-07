@@ -271,6 +271,171 @@ sequenceDiagram
 - **ブラウザ自動化**: Playwright
 - **連携**: Google Sheets API
 
+## FastAPIによるAPI統合アーキテクチャ
+
+本システムでは、FastAPIが**API統合ハブ**として機能し、複数の外部サービスを統一されたインターフェースで提供しています。
+
+### なぜFastAPIが必要か？
+
+SupabaseやBigQuery、各種AI APIを直接クライアントから呼び出すのではなく、FastAPIを経由する理由：
+
+1. **セキュリティ**: APIキーをクライアントに露出させない
+2. **ビジネスロジック**: 複数サービスにまたがる複雑な処理を実装
+3. **統一インターフェース**: 異なるサービスのAPIを統一された形式で提供
+4. **認証・認可**: JWT認証による細かいアクセス制御
+5. **エラーハンドリング**: 各サービスのエラーを統一形式に変換
+
+### API統合の全体像
+
+```mermaid
+graph TB
+    subgraph "フロントエンド"
+        A[Webブラウザ<br/>React/Vue等]
+        B[モバイルアプリ]
+    end
+    
+    subgraph "FastAPI層（統一API）"
+        C[FastAPI<br/>API Gateway]
+        D[認証・認可<br/>JWT/OAuth2]
+        E[ビジネスロジック]
+        F[キャッシング<br/>Redis]
+    end
+    
+    subgraph "外部サービス"
+        G[Supabase<br/>ユーザー管理・DB]
+        H[BigQuery<br/>大規模データ分析]
+        I[OpenAI API<br/>ChatGPT-4o]
+        J[Google APIs<br/>Docs/Sheets/Gemini]
+        K[Bizreach<br/>スクレイピング]
+    end
+    
+    A --> C
+    B --> C
+    
+    C --> D
+    D --> E
+    E --> F
+    
+    E --> G
+    E --> H
+    E --> I
+    E --> J
+    E --> K
+    
+    style C fill:#f9f,stroke:#333,stroke-width:4px
+    style E fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+### 具体的な統合例
+
+#### 1. 採用要件の登録フロー
+
+```mermaid
+sequenceDiagram
+    participant UI as フロントエンド
+    participant API as FastAPI
+    participant Auth as Supabase Auth
+    participant DB as Supabase DB
+    participant BQ as BigQuery
+    participant AI as Gemini API
+
+    UI->>API: POST /api/requirements
+    API->>Auth: トークン検証
+    Auth-->>API: ユーザー情報
+    API->>AI: 自然言語を構造化
+    AI-->>API: JSON構造
+    API->>DB: 基本情報を保存
+    API->>BQ: 詳細データを保存
+    API-->>UI: 統一レスポンス
+```
+
+#### 2. 候補者検索の実行フロー
+
+```mermaid
+sequenceDiagram
+    participant UI as フロントエンド
+    participant API as FastAPI
+    participant Redis as Redis Cache
+    participant Scraper as スクレイピング
+    participant GPT as ChatGPT-4o
+    participant BQ as BigQuery
+    participant Sheets as Google Sheets
+
+    UI->>API: POST /api/jobs/search
+    API->>Redis: キャッシュ確認
+    
+    alt キャッシュなし
+        API->>Scraper: 候補者取得
+        Scraper-->>API: 候補者データ
+        API->>GPT: マッチング判定
+        GPT-->>API: スコア・理由
+        API->>Redis: 結果をキャッシュ
+    end
+    
+    API->>BQ: 結果を保存
+    API->>Sheets: レポート生成
+    API-->>UI: 統一レスポンス
+```
+
+### FastAPIの主要エンドポイント
+
+| エンドポイント | メソッド | 統合サービス | 用途 |
+|-------------|---------|------------|-----|
+| `/api/auth/login` | POST | Supabase Auth | ユーザー認証 |
+| `/api/requirements` | GET/POST | Supabase, BigQuery, Gemini | 採用要件の管理 |
+| `/api/jobs` | POST | Pub/Sub, Cloud Functions | ジョブ実行管理 |
+| `/api/candidates/{id}/evaluate` | POST | ChatGPT-4o, BigQuery | AI判定実行 |
+| `/api/results/{job_id}` | GET | BigQuery, Google Sheets | 結果取得 |
+| `/api/clients` | GET/POST | Supabase | クライアント管理 |
+
+### 実装例：複数サービスを統合するAPI
+
+```python
+# src/web/routers/requirements.py の例
+@router.post("/requirements")
+async def create_requirement(
+    requirement: RequirementCreate,
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Supabaseでユーザー権限確認
+    if not check_user_permission(current_user.id, "create_requirement"):
+        raise HTTPException(status_code=403)
+    
+    # 2. Gemini APIで自然言語を構造化
+    structured_data = await gemini_client.structure_text(
+        requirement.description
+    )
+    
+    # 3. Supabaseに基本情報を保存
+    db_record = await supabase.table("requirements").insert({
+        "client_id": requirement.client_id,
+        "title": requirement.title,
+        "created_by": current_user.id
+    }).execute()
+    
+    # 4. BigQueryに詳細データを保存
+    await bigquery_client.insert_rows([{
+        "id": db_record.data[0]["id"],
+        "structured_data": structured_data,
+        "original_text": requirement.description
+    }])
+    
+    # 5. 統一されたレスポンスを返す
+    return {
+        "id": db_record.data[0]["id"],
+        "status": "created",
+        "structured_data": structured_data
+    }
+```
+
+### メリットまとめ
+
+- **開発効率**: フロントエンド開発者は1つのAPIだけ意識すればOK
+- **保守性**: API仕様変更の影響を最小限に
+- **拡張性**: 新しいサービス追加が容易
+- **監視**: すべてのAPI呼び出しを一元的に監視・ログ記録
+- **パフォーマンス**: キャッシングやバッチ処理で最適化
+
 ### データフロー
 
 1. **採用要件取得**: Webフォームまたは自然言語入力から要件を取得しJSON構造化
