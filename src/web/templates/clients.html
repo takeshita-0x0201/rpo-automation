@@ -1,0 +1,39 @@
+
+{% extends "_base.html" %}
+
+{% block title %}クライアント企業一覧{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-4">クライアント企業一覧</h1>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>企業名</th>
+                        <th>業界</th>
+                        <th>企業規模</th>
+                        <th>担当者名</th>
+                        <th>連絡先メールアドレス</th>
+                        <th>直接スクレイピング許可</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in clients %}
+                    <tr>
+                        <td>{{ client.name }}</td>
+                        <td>{{ client.industry }}</td>
+                        <td>{{ client.size }}</td>
+                        <td>{{ client.contact_person }}</td>
+                        <td>{{ client.contact_email }}</td>
+                        <td><span class="badge {{ 'bg-success' if client.allows_direct_scraping else 'bg-secondary' }}">{{ "許可" if client.allows_direct_scraping else "不可" }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

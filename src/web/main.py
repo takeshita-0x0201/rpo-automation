@@ -3,7 +3,7 @@ RPO Automation WebApp Main Application
 FastAPI-based web application entry point
 """
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +13,7 @@ import os
 from typing import Optional
 
 # ルーターのインポート
-from src.web.routers import requirements, jobs, results, auth
+from src.web.routers import requirements, jobs, results, auth, clients
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -42,9 +42,9 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(requirements.router, prefix="/api/requirements", tags=["requirements"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/results", tags=["results"])
+app.include_router(clients.router, prefix="/admin/clients", tags=["clients"])
 
-# 認証チェック用の依存関係
-from src.web.routers.auth import get_current_user
+from src.web.routers.auth import get_current_user_from_cookie
 
 # ルートエンドポイント
 @app.get("/", response_class=HTMLResponse)
@@ -59,16 +59,18 @@ async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
+async def admin_dashboard(request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """管理者ダッシュボード"""
-    # TODO: 認証チェックとロールチェックを実装
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request})
+    if not user or user.get("role") != "admin":
+        return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
+    return templates.TemplateResponse("admin_dashboard.html", {"request": request, "user": user})
 
 @app.get("/user", response_class=HTMLResponse)
-async def user_dashboard(request: Request):
+async def user_dashboard(request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """ユーザーダッシュボード"""
-    # TODO: 認証チェックを実装
-    return templates.TemplateResponse("user_dashboard.html", {"request": request})
+    if not user:
+        return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
+    return templates.TemplateResponse("user_dashboard.html", {"request": request, "user": user})
 
 @app.get("/logout")
 async def logout(request: Request):

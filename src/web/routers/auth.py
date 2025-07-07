@@ -38,6 +38,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+async def get_current_user_from_cookie(request: Request) -> Optional[dict]:
+    """Cookieからアクセストークンを取得し、現在のユーザーを返す"""
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+        
+        # ここではペイロードから直接ロールを取得する簡易版とします
+        # 本来はDBに問い合わせるべきです
+        return {"id": user_id, "email": payload.get("email"), "role": payload.get("role")}
+    except jwt.PyJWTError:
+        return None
+
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """現在のユーザーを取得"""
     credentials_exception = HTTPException(
@@ -72,7 +89,7 @@ async def login(request: LoginRequest):
     # JWTトークンを作成
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": result["user"].id, "role": result["role"]},
+        data={"sub": result["user"].id, "role": result["role"], "email": result["user"].email},
         expires_delta=access_token_expires
     )
     
@@ -113,7 +130,7 @@ async def login_form(
     # JWTトークンを作成
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": result["user"].id, "role": result["role"]},
+        data={"sub": result["user"].id, "role": result["role"], "email": result["user"].email},
         expires_delta=access_token_expires
     )
     
