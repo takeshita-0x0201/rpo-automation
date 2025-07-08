@@ -14,7 +14,7 @@ router = APIRouter()
 # JWT設定
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 120 # 2時間に延長
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
@@ -41,18 +41,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 async def get_current_user_from_cookie(request: Request) -> Optional[dict]:
     """Cookieからアクセストークンを取得し、現在のユーザーを返す"""
     token = request.cookies.get("access_token")
+    print(f"get_current_user_from_cookie: access_token from cookie: {token}")
     if not token:
+        print("get_current_user_from_cookie: No access_token found in cookie.")
         return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
+        print(f"get_current_user_from_cookie: Decoded payload: {payload}")
         if user_id is None:
+            print("get_current_user_from_cookie: User ID is None in payload.")
             return None
         
         # ここではペイロードから直接ロールを取得する簡易版とします
         # 本来はDBに問い合わせるべきです
         return {"id": user_id, "email": payload.get("email"), "role": payload.get("role")}
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        print(f"get_current_user_from_cookie: JWT Error: {e}")
         return None
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):

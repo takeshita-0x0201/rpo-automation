@@ -13,7 +13,7 @@ import os
 from typing import Optional
 
 # ルーターのインポート
-from src.web.routers import requirements, jobs, results, auth, clients, users
+from src.web.routers import requirements, jobs, results, auth, clients, users, admin_requirements
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -44,6 +44,8 @@ app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/results", tags=["results"])
 app.include_router(clients.router, prefix="/admin/clients", tags=["clients"])
 app.include_router(users.router, prefix="/admin/users", tags=["users"])
+# 管理者用採用要件ルーター（HTMLページ用）
+app.include_router(admin_requirements.router, tags=["admin_requirements"])
 
 from src.web.routers.auth import get_current_user_from_cookie
 
@@ -81,14 +83,6 @@ async def logout(request: Request):
     return response
 
 # 管理者向けページ
-@app.get("/admin/requirements", response_class=HTMLResponse)
-async def admin_requirements(request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
-    """管理者 - 採用要件管理"""
-    if not user or user.get("role") != "admin":
-        return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
-    # TODO: データベースから要件を取得
-    requirements = []
-    return templates.TemplateResponse("admin/requirements.html", {"request": request, "current_user": user, "requirements": requirements})
 
 @app.get("/admin/jobs", response_class=HTMLResponse)
 async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):

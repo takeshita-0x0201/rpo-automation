@@ -1,0 +1,96 @@
+{% extends "shared/layout.html" %}
+
+{% block title %}新規採用要件の登録{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">新規採用要件の登録</h1>
+
+    {% if request.query_params.error == 'creation_failed' %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        採用要件の作成に失敗しました。
+        {% if request.query_params.message %}
+        <br>詳細: {{ request.query_params.message }}
+        {% endif %}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form action="/admin/requirements/create" method="post">
+                <div class="mb-3">
+                    <label for="client_id" class="form-label">クライアント企業</label>
+                    <select class="form-select" id="client_id" name="client_id" required>
+                        <option value="" disabled selected>選択してください</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="title" class="form-label">要件タイトル</label>
+                    <input type="text" class="form-control" id="title" name="title" required>
+                </div>
+                <div class="mb-3">
+                    <label for="requirement_text" class="form-label">採用要件（テキスト）</label>
+                    <textarea class="form-control" id="requirement_text" name="requirement_text" rows="10" placeholder="クライアントから受け取った採用要件をそのまま貼り付けてください..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <button type="button" id="structure-btn" class="btn btn-secondary">AIで構造化</button>
+                </div>
+                <div class="mb-3">
+                    <label for="structured_data" class="form-label">構造化データ (JSON)</label>
+                    <textarea class="form-control" id="structured_data" name="structured_data" rows="15"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">登録</button>
+                <a href="/admin/requirements" class="btn btn-link">キャンセル</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('structure-btn').addEventListener('click', async () => {
+    const text = document.getElementById('requirement_text').value;
+    if (!text) {
+        alert('採用要件テキストを入力してください。');
+        return;
+    }
+
+    const structureBtn = document.getElementById('structure-btn');
+    const structuredDataField = document.getElementById('structured_data');
+
+    // ローディング表示開始
+    structureBtn.disabled = true;
+    structureBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 構造化中...';
+    structuredDataField.value = '構造化中です。しばらくお待ちください...';
+
+    try {
+        const response = await fetch('/api/requirements/structure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: text })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            structuredDataField.value = JSON.stringify(result.structured_data, null, 2);
+        } else {
+            alert('構造化に失敗しました: ' + result.error);
+            structuredDataField.value = '構造化に失敗しました。エラー: ' + result.error;
+        }
+    } catch (error) {
+        alert('通信エラーが発生しました: ' + error.message);
+        structuredDataField.value = '通信エラーが発生しました。エラー: ' + error.message;
+    } finally {
+        // ローディング表示終了
+        structureBtn.disabled = false;
+        structureBtn.innerHTML = 'AIで構造化';
+    }
+});
+</script>
+{% endblock %}

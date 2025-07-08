@@ -1,0 +1,49 @@
+{% extends "shared/layout.html" %}
+
+{% block title %}採用要件詳細{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">採用要件詳細</h1>
+
+    {% if success == 'created' %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        採用要件が正常に作成されました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% elif success == 'updated' %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        採用要件が正常に更新されました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">
+            {{ requirement.title }}
+        </div>
+        <div class="card-body">
+            <p><strong>クライアント:</strong> {{ requirement.client_name }}</p>
+            <p><strong>ポジション:</strong> {{ requirement.position }}</p>
+            <p><strong>ステータス:</strong> 
+                {% if requirement.is_active %}
+                <span class="badge bg-success">有効</span>
+                {% else %}
+                <span class="badge bg-secondary">無効</span>
+                {% endif %}
+            </p>
+            <p><strong>採用要件（原文）:</strong></p>
+            <pre>{{ requirement.description }}</pre>
+            <p><strong>構造化データ:</strong></p>
+            <pre><code>{{ requirement.structured_data | tojson(indent=2) }}</code></pre>
+        </div>
+        <div class="card-footer">
+            <a href="/admin/requirements/{{ requirement.id }}/edit" class="btn btn-warning">編集</a>
+            <form action="/admin/requirements/{{ requirement.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('本当に削除しますか？');">
+                <button type="submit" class="btn btn-danger">削除</button>
+            </form>
+            <a href="/admin/requirements" class="btn btn-secondary">一覧に戻る</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

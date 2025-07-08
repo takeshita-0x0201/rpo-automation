@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from uuid import UUID
 import json
+from ...ai.gemini_client import GeminiClient
 
 router = APIRouter()
 
@@ -81,3 +82,71 @@ async def activate_requirement(requirement_id: str):
 @router.post("/{requirement_id}/deactivate")
 async def deactivate_requirement(requirement_id: str):
     return {"message": "Requirement deactivated successfully"}
+
+class StructureRequest(BaseModel):
+    text: str
+
+class StructureResponse(BaseModel):
+    structured_data: Dict[str, Any]
+    success: bool
+    error: Optional[str] = None
+
+@router.post("/structure", response_model=StructureResponse)
+async def structure_requirement(request: StructureRequest):
+    """
+    採用要件テキストをAIで構造化
+    """
+    raw_structured_data = "" # 初期化
+    try:
+        print("Attempting to initialize GeminiClient...")
+        # Gemini clientを初期化
+        gemini_client = GeminiClient()
+        print("GeminiClient initialized successfully.")
+        
+        print(f"Structuring text: {request.text[:50]}...") # テキストの冒頭50文字を表示
+        # 構造化を実行
+        raw_structured_data = await gemini_client.structure_requirement(request.text)
+        print(f"Raw structured_data received: {raw_structured_data[:500]}...") # 生の応答をログに出力
+
+        # MarkdownのJSONコードブロックからJSON文字列を抽出
+        import re
+        match = re.search(r"```json\n([\s\S]*?)\n```", raw_structured_data)
+        if not match:
+            raise ValueError("AIからの応答にJSONコードブロックが見つかりませんでした。")
+        
+        json_string = match.group(1).strip()
+        print(f"JSON string extracted: '{json_string}'") # デバッグログ追加
+
+        if json_string.lower() == "null":
+            raise ValueError("AIからの応答がJSONコードブロック内に'null'を含んでいました。")
+
+        structured_data = json.loads(json_string) # JSON文字列をPython辞書に変換
+        print(f"Parsed structured_data: {structured_data}") # デバッグログ追加
+
+        # structured_dataがNoneの場合のハンドリングを追加
+        if structured_data is None:
+            raise ValueError("AIからの応答が空のJSON（null）でした。")
+        
+        # structured_dataが辞書型でない場合のハンドリングを追加 (念のため)
+        if not isinstance(structured_data, dict):
+            raise ValueError(f"AIからの応答が期待する辞書型ではありませんでした: {type(structured_data)}")
+        
+        return StructureResponse(
+            structured_data=structured_data,
+            success=True
+        )
+    except json.JSONDecodeError as e:
+        print(f"JSONDecodeError: {e}")
+        print(f"Raw structured_data that caused error: {raw_structured_data}")
+        return StructureResponse(
+            structured_data={},
+            success=False,
+            error=f"AIからの応答が不正なJSON形式です: {e}"
+        )
+    except Exception as e:
+        print(f"Error during structure_requirement: {e}")
+        return StructureResponse(
+            structured_data={},
+            success=False,
+            error=str(e)
+        )
