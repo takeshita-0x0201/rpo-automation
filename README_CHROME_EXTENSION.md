@@ -78,6 +78,7 @@ graph TD
 2. **リアルタイム連携**: FastAPIとの直接通信でリアルタイムな進捗表示
 3. **セキュアな認証**: JWT認証でAPIアクセスを保護
 4. **視覚的フィードバック**: スクレイピング中の進捗をブラウザ上で確認可能
+5. **クライアント選択機能**: スクレイピング開始時にクライアントを選択
 
 ## WebAppの役割と機能
 
@@ -89,7 +90,7 @@ graph TD
 - **編集・削除**: 既存要件の更新と削除
 
 #### 2. 実行管理
-- **ジョブ作成**: スクレイピングジョブの作成
+- **AIマッチングジョブ作成**: 採用要件と候補者データが揃った後のAI判定ジョブの作成
 - **状況モニタリング**: リアルタイムでの進捗表示
 - **エラー通知**: 失敗時の詳細情報表示
 
@@ -138,6 +139,13 @@ graph TD
 
 ## システム全体のワークフロー
 
+### データ収集とAI判定の2段階プロセス
+
+本システムは、データ収集とAI判定を明確に分離した2段階プロセスを採用しています：
+
+1. **データ収集フェーズ**: Chrome拡張機能による候補者情報のスクレイピング
+2. **AI判定フェーズ**: 採用要件と候補者データが揃った後のマッチング処理
+
 ### Phase 1: 採用要件の登録
 
 ```mermaid
@@ -160,19 +168,21 @@ graph TD
 
 ### Phase 2: 候補者検索の実行（Chrome拡張機能版）
 
-1. RPOスタッフがWebAppで登録済み要件から選択し、ジョブを作成
-2. Bizreachにログインし、Chrome拡張機能を起動
-3. 拡張機能がFastAPIから認証トークンとジョブ情報を取得
-4. 拡張機能が自動的に候補者を検索・収集
-5. 収集したデータをバッチでFastAPIに送信
-6. FastAPIがデータをBigQueryに保存
+1. Bizreachにログインし、Chrome拡張機能を起動
+2. 拡張機能でクライアントを選択
+3. Bizreachで直接検索を実行
+4. スクレイピングボタンをクリックし、候補者情報を収集
+5. 収集したデータをFastAPI経由でBigQueryに保存
+6. データは自動的に構造化処理される
 
-### Phase 3: AI判定とレポート生成
+### Phase 3: AI判定とレポート生成（ジョブ実行）
 
-1. 取得した候補者データをChatGPT-4oでマッチング判定
-2. スコア・評価理由を含むレポートを自動生成
-3. Google Sheetsに結果を自動出力
-4. RPOスタッフに完了通知
+1. WebAppから採用要件と候補者データを指定してジョブを作成
+2. Cloud FunctionsがBigQueryから構造化済みデータを取得
+3. ChatGPT-4oでマッチング判定を実行
+4. スコア・評価理由を含むレポートを自動生成
+5. Google Sheetsに結果を自動出力
+6. RPOスタッフに完了通知
 
 ### Phase 4: フィードバックと継続的改善
 
@@ -185,41 +195,40 @@ RPOスタッフからのフィードバックとクライアント企業から�
 ```mermaid
 sequenceDiagram
     participant User as RPOスタッフ
-    participant WebApp as WebApp
-    participant API as FastAPI
     participant Ext as Chrome拡張機能
     participant Biz as Bizreach
+    participant API as FastAPI
     participant BQ as BigQuery
+    participant WebApp as WebApp
     participant CF as Cloud Functions
 
-    User->>WebApp: 1. 採用要件を選択
-    WebApp->>API: 2. ジョブ作成リクエスト
-    API->>BQ: 3. ジョブ情報を保存
-    API-->>WebApp: 4. job_id返却
-    
-    User->>Biz: 5. Bizreachにログイン
-    User->>Ext: 6. 拡張機能を起動
-    Ext->>API: 7. 認証（JWT取得）
-    API-->>Ext: 8. トークン返却
-    
-    Ext->>API: 9. ジョブ情報取得
-    API-->>Ext: 10. 採用要件返却
+    Note over User,CF: Phase 1: データ収集
+    User->>Biz: 1. Bizreachにログイン
+    User->>Ext: 2. 拡張機能を起動
+    Ext->>User: 3. クライアント選択画面表示
+    User->>Ext: 4. クライアントを選択
+    User->>Biz: 5. 検索条件を入力・実行
+    User->>Ext: 6. スクレイピング開始ボタン
     
     loop 候補者収集
-        Ext->>Biz: 11. 検索実行・スクレイピング
-        Biz-->>Ext: 12. 候補者データ
-        Ext->>Ext: 13. データ整形・バッチ化
-        
-        alt バッチサイズに達した
-            Ext->>API: 14. 候補者データ送信
-            API->>BQ: 15. データ保存
-            API-->>Ext: 16. 保存完了通知
-        end
+        Ext->>Biz: 7. 候補者情報取得
+        Ext->>API: 8. 候補者データ送信
+        API->>BQ: 9. データ保存
     end
     
-    Ext->>API: 17. ジョブ完了通知
-    API->>CF: 18. AI判定開始
-    CF->>BQ: 19. 判定結果保存
+    Ext->>User: 10. 収集完了通知
+    
+    Note over User,CF: Phase 2: AI判定（ジョブ実行）
+    User->>WebApp: 11. AIマッチング画面へ
+    WebApp->>User: 12. 採用要件・候補者データ選択
+    User->>WebApp: 13. ジョブ作成
+    WebApp->>API: 14. ジョブ作成リクエスト
+    API->>CF: 15. AI判定開始
+    CF->>BQ: 16. 構造化データ取得
+    CF->>CF: 17. AIマッチング実行
+    CF->>BQ: 18. 判定結果保存
+    CF->>API: 19. 完了通知
+    API->>WebApp: 20. 結果表示
 ```
 
 ## クラウドアーキテクチャ (GCP)
@@ -330,10 +339,10 @@ graph TB
 | エンドポイント | メソッド | 用途 |
 |-------------|---------|-----|
 | `/api/auth/extension/login` | POST | 拡張機能用の認証 |
-| `/api/jobs/{job_id}` | GET | ジョブ情報の取得 |
+| `/api/clients` | GET | クライアント一覧取得 |
 | `/api/candidates/batch` | POST | 候補者データのバッチ送信 |
-| `/api/jobs/{job_id}/status` | PUT | ジョブステータスの更新 |
-| `/api/jobs/{job_id}/complete` | POST | ジョブ完了通知 |
+| `/api/scraping/session/start` | POST | スクレイピングセッション開始 |
+| `/api/scraping/session/{session_id}/complete` | POST | セッション完了通知 |
 
 ### 実装例：Chrome拡張機能からのデータ送信
 
@@ -343,39 +352,41 @@ graph TB
 async def receive_candidates_batch(
     batch: CandidateBatch,
     current_user: User = Depends(get_current_user),
-    job_id: str = Query(...)
+    session_id: str = Query(...),
+    client_id: str = Query(...)
 ):
-    # 1. ジョブの所有権確認
-    job = await get_job_by_id(job_id)
-    if job.created_by != current_user.id:
+    # 1. セッションの有効性確認
+    session = await get_scraping_session(session_id)
+    if session.user_id != current_user.id:
         raise HTTPException(status_code=403)
     
     # 2. データ検証と整形
     validated_candidates = []
     for candidate in batch.candidates:
         validated = validate_candidate_data(candidate)
-        validated['job_id'] = job_id
+        validated['session_id'] = session_id
+        validated['client_id'] = client_id
         validated['scraped_by'] = current_user.id
         validated['scraped_at'] = datetime.now()
         validated_candidates.append(validated)
     
     # 3. BigQueryに保存
     errors = await bigquery_client.insert_rows_json(
-        table_id="recruitment_data.candidates",
+        table_id="rpo_raw_data.raw_candidates",
         json_rows=validated_candidates
     )
     
     if errors:
         raise HTTPException(status_code=500, detail=f"BigQuery errors: {errors}")
     
-    # 4. ジョブの進捗更新
-    await update_job_progress(job_id, len(validated_candidates))
+    # 4. セッションの候補者数更新
+    await update_session_candidate_count(session_id, len(validated_candidates))
     
     # 5. 統一されたレスポンスを返す
     return {
         "status": "success",
         "received": len(validated_candidates),
-        "total": job.candidate_count + len(validated_candidates)
+        "total": session.candidate_count + len(validated_candidates)
     }
 ```
 
@@ -389,14 +400,19 @@ async def receive_candidates_batch(
 
 ### データフロー
 
-1. **採用要件取得**: Webフォームまたは自然言語入力から要件を取得しJSON構造化
-2. **候補者検索**: Chrome拡張機能によるスクレイピング
-   - WebAppでジョブを作成
-   - Chrome拡張機能でBizreachから候補者情報を収集
-   - FastAPI経由でデータをバッチ送信
-3. **AI判定**: 要件と候補者のマッチング判定（ChatGPT-4o）
-4. **結果出力**: Google Sheetsへ結果を記録
-5. **フィードバック**: クライアント別の採用パターンを学習データとして蓄積
+#### Phase 1: データ収集
+1. **採用要件登録**: Webフォームまたは自然言語入力から要件を取得しJSON構造化
+2. **候補者収集**: Chrome拡張機能によるスクレイピング
+   - Chrome拡張機能でクライアントを選択
+   - Bizreachで直接検索を実行
+   - スクレイピングで候補者情報を収集
+   - FastAPI経由でBigQueryにリアルタイム保存
+
+#### Phase 2: AI判定（ジョブ実行）
+3. **ジョブ作成**: WebAppから採用要件と候補者データを指定
+4. **AI判定**: 構造化済みデータでマッチング判定（ChatGPT-4o）
+5. **結果出力**: Google Sheetsへ結果を記録
+6. **フィードバック**: クライアント別の採用パターンを学習データとして蓄積
 
 ### データベース設計
 
@@ -407,13 +423,14 @@ async def receive_candidates_batch(
 
 ##### Supabaseテーブル詳細設計
 
-###### profiles（RPOスタッフプロファイル）
+###### users（RPOスタッフ管理）
 | カラム名 | 型 | 制約 | 説明 |
 |---------|----|----|------|
-| id | UUID | PK, FK(auth.users) | Supabase AuthのユーザーID |
-| full_name | TEXT | | スタッフの氏名 |
-| role | TEXT | CHECK | 役職（admin/manager/operator） |
-| department | TEXT | | 所属部署 |
+| id | UUID | PK | ユーザーID |
+| email | TEXT | UNIQUE | メールアドレス |
+| password_hash | TEXT | | パスワードハッシュ |
+| role | TEXT | CHECK | ロール（admin/user） |
+| is_active | BOOLEAN | DEFAULT true | 有効フラグ |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
 
@@ -427,58 +444,117 @@ async def receive_candidates_batch(
 | contact_person | TEXT | | 担当者名 |
 | contact_email | TEXT | | 担当者メール |
 | bizreach_search_url | TEXT | | Bizreach検索URL（オプション） |
+| is_active | BOOLEAN | DEFAULT true | 有効フラグ |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
 
-###### jobs（実行ジョブ）
+###### user_client_assignments（ユーザー・クライアント紐付け）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | ID |
+| user_id | UUID | FK(users.id) | ユーザーID |
+| client_id | UUID | FK(clients.id) | クライアントID |
+| assigned_at | TIMESTAMPTZ | DEFAULT NOW() | 割り当て日時 |
+| assigned_by | UUID | FK(users.id) | 割り当て者 |
+
+###### job_requirements（採用要件管理）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | 要件ID |
+| client_id | UUID | FK(clients.id) | クライアントID |
+| title | TEXT | NOT NULL | タイトル |
+| description | TEXT | | 詳細説明 |
+| structured_data | JSON | | 構造化データ |
+| is_active | BOOLEAN | DEFAULT true | 有効フラグ |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| created_by | UUID | FK(users.id) | 作成者 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
+
+###### matching_jobs（AIマッチングジョブ）
 | カラム名 | 型 | 制約 | 説明 |
 |---------|----|----|------|
 | id | UUID | PK | ジョブID |
-| requirement_id | TEXT | NOT NULL | 採用要件ID（BigQuery参照） |
-| client_id | UUID | FK(clients) | クライアントID |
-| status | TEXT | CHECK | ステータス（created/collecting/processing/completed/failed） |
-| execution_type | TEXT | DEFAULT 'extension' | 実行タイプ（extension） |
-| created_by | UUID | FK(auth.users) | 作成者 |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
-| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
+| client_id | UUID | FK(clients.id) | クライアントID |
+| requirement_id | UUID | FK(job_requirements.id) | 採用要件ID |
+| status | TEXT | CHECK | ステータス（pending/processing/completed/failed） |
 | started_at | TIMESTAMPTZ | | 実行開始日時 |
 | completed_at | TIMESTAMPTZ | | 完了日時 |
+| started_by | UUID | FK(users.id) | 実行者 |
+| result_summary | JSON | | 結果サマリ |
 | error_message | TEXT | | エラーメッセージ |
-| candidate_count | INTEGER | DEFAULT 0 | 取得候補者数 |
-| processed_count | INTEGER | DEFAULT 0 | AI判定済み候補者数 |
-
-###### job_status_history（ジョブステータス履歴）
-| カラム名 | 型 | 制約 | 説明 |
-|---------|----|----|------|
-| id | UUID | PK | 履歴ID |
-| job_id | UUID | FK(jobs) | ジョブID |
-| status | TEXT | NOT NULL | ステータス |
-| message | TEXT | | メッセージ |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
 
 ###### extension_sessions（拡張機能セッション管理）
 | カラム名 | 型 | 制約 | 説明 |
 |---------|----|----|------|
 | id | UUID | PK | セッションID |
-| user_id | UUID | FK(auth.users) | ユーザーID |
-| job_id | UUID | FK(jobs) | 実行中のジョブID |
-| token | TEXT | UNIQUE | JWTトークン |
-| started_at | TIMESTAMPTZ | DEFAULT NOW() | 開始日時 |
+| session_token | TEXT | UNIQUE | セッショントークン |
+| user_id | UUID | FK(users.id) | ユーザーID |
+| expires_at | TIMESTAMPTZ | | 有効期限 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
 | last_activity | TIMESTAMPTZ | DEFAULT NOW() | 最終活動日時 |
-| is_active | BOOLEAN | DEFAULT true | アクティブフラグ |
+
+###### scraping_sessions（スクレイピングセッション）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | セッションID |
+| user_id | UUID | FK(users.id) | ユーザーID |
+| client_id | UUID | FK(clients.id) | クライアントID |
+| started_at | TIMESTAMPTZ | DEFAULT NOW() | 開始日時 |
+| completed_at | TIMESTAMPTZ | | 完了日時 |
+| candidate_count | INTEGER | DEFAULT 0 | 収集候補者数 |
+| status | TEXT | CHECK | ステータス（in_progress/completed/error） |
+
+###### job_status_history（ジョブステータス履歴）
+| カラム名 | 型 | 制約 | 説明 |
+|---------|----|----|------|
+| id | UUID | PK | 履歴ID |
+| job_id | UUID | FK(matching_jobs) | ジョブID |
+| status | TEXT | NOT NULL | ステータス |
+| message | TEXT | | メッセージ |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+
 
 ###### Row Level Security (RLS) ポリシー
-- **profiles**: 全員が閲覧可能、本人のみ更新可能
-- **clients**: 全スタッフが閲覧可能、admin/managerのみ編集可能
-- **jobs**: 全スタッフが閲覧・編集可能
+- **users**: 全員が閲覧可能、本人のみ更新可能
+- **clients**: 全スタッフが閲覧可能、adminのみ編集可能
+- **matching_jobs**: 全スタッフが閲覧・編集可能
 - **extension_sessions**: 本人のセッションのみアクセス可能
+- **scraping_sessions**: 本人のセッションのみアクセス可能
 
 #### 2. BigQuery
 **目的**: 大規模データの蓄積と分析
 
 ##### BigQueryテーブル詳細設計
 
-###### recruitment_data.requirements（採用要件）
+###### rpo_raw_data.raw_candidates（候補者生データ）
+| カラム名 | 型 | 説明 |
+|---------|----|----|  
+| scraped_at | TIMESTAMP | スクレイピング日時 |
+| session_id | STRING | スクレイピングセッションID |
+| client_id | STRING | クライアントID |
+| client_name | STRING | クライアント名 |
+| candidate_url | STRING | 候補者URL |
+| raw_html | STRING | HTML生データ |
+| raw_data | JSON | スクレイピングデータ |
+| scraped_by_user_id | STRING | スクレイピング実行者 |
+
+###### rpo_structured_data.structured_candidates（構造化済み候補者データ）
+| カラム名 | 型 | 説明 |
+|---------|----|----|  
+| candidate_id | STRING | 候補者ID |
+| original_url | STRING | 元URL |
+| client_id | STRING | クライアントID |
+| name | STRING | 氏名 |
+| current_company | STRING | 現在の会社 |
+| position | STRING | 現在のポジション |
+| skills | ARRAY<STRING> | スキル一覧 |
+| experience_years | INTEGER | 経験年数 |
+| education | STRING | 学歴 |
+| structured_at | TIMESTAMP | 構造化日時 |
+| structured_data | JSON | 全構造化データ |
+| structuring_model | STRING | 構造化に使用したモデル |
+
+###### rpo_structured_data.job_requirements（採用要件）
 | カラム名 | 型 | 説明 |
 |---------|----|----|
 | id | STRING | 要件ID |
@@ -498,46 +574,31 @@ async def receive_candidates_batch(
 | created_at | TIMESTAMP | 作成日時 |
 | created_by | STRING | 作成者ID |
 
-###### recruitment_data.candidates（候補者）
+###### rpo_matching_results.matching_results（マッチング結果）
 | カラム名 | 型 | 説明 |
 |---------|----|----|
-| id | STRING | 候補者ID |
-| job_id | STRING | ジョブID |
-| search_id | STRING | 検索ID |
-| name | STRING | 候補者名 |
-| current_title | STRING | 現在の役職 |
-| current_company | STRING | 現在の企業 |
-| experience_years | INTEGER | 経験年数 |
-| skills | ARRAY<STRING> | スキルセット |
-| education | STRING | 学歴 |
-| profile_url | STRING | プロフィールURL |
-| scraped_data | JSON | スクレイピングデータ |
-| scraped_at | TIMESTAMP | 取得日時 |
-| scraped_by | STRING | 取得者ID |
-| scraping_method | STRING | 取得方法（extension） |
-
-###### recruitment_data.ai_evaluations（AI評価）
-| カラム名 | 型 | 説明 |
-|---------|----|----|
-| id | STRING | 評価ID |
+| result_id | STRING | 結果ID |
+| job_id | STRING | マッチングジョブID |
 | candidate_id | STRING | 候補者ID |
+| client_id | STRING | クライアントID |
 | requirement_id | STRING | 要件ID |
-| ai_score | FLOAT64 | AIスコア（0-100） |
-| match_reasons | ARRAY<STRING> | マッチング理由 |
-| concerns | ARRAY<STRING> | 懸念点 |
-| recommendation | STRING | 推奨度 |
+| match_score | FLOAT64 | マッチスコア（0-100） |
+| match_reasons | ARRAY<STRING> | マッチ理由 |
+| ai_evaluation | JSON | AI評価詳細 |
 | evaluated_at | TIMESTAMP | 評価日時 |
-| model_version | STRING | AIモデルバージョン |
+| evaluation_model | STRING | 使用モデル |
+| model_version | STRING | モデルバージョン |
+
 
 ##### データパーティショニング戦略
-- **requirements**: created_at で日付パーティション
-- **candidates**: scraped_at で日付パーティション
-- **ai_evaluations**: evaluated_at で日付パーティション
+- **raw_candidates**: scraped_at で日付パーティション
+- **structured_candidates**: structured_at で日付パーティション
+- **matching_results**: evaluated_at で日付パーティション
 - 90日以上古いデータは自動的にコールドストレージへ
 
 #### データベース連携
-- Supabaseの実行完了ジョブは、バッチでBigQueryへ転送
-- BigQueryの集計結果は、必要に応じてSupabaseにキャッシュ
+- Chrome拡張機能からのデータはリアルタイムでBigQueryへ保存
+- Supabaseはシステム管理とユーザー認証に特化
 - クライアント企業のデータは`client_id`で管理
 
 ### セキュリティ設計
