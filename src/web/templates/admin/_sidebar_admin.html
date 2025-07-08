@@ -1,0 +1,38 @@
+
+<ul class="nav flex-column">
+    <li class="nav-item">
+        <a class="nav-link {% if request.url.path == '/admin' %}active{% endif %}" href="/admin">
+            <i class="bi bi-house-door"></i> ダッシュボード
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/users' in request.url.path %}active{% endif %}" href="/admin/users">
+            <i class="bi bi-people"></i> ユーザー管理
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/clients' in request.url.path %}active{% endif %}" href="/admin/clients">
+            <i class="bi bi-building"></i> クライアント管理
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/requirements' in request.url.path %}active{% endif %}" href="/admin/requirements">
+            <i class="bi bi-clipboard-check"></i> 採用要件管理
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/jobs' in request.url.path %}active{% endif %}" href="/admin/jobs">
+            <i class="bi bi-gear"></i> ジョブ管理
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/analytics' in request.url.path %}active{% endif %}" href="/admin/analytics">
+            <i class="bi bi-graph-up"></i> 分析レポート
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if '/admin/settings' in request.url.path %}active{% endif %}" href="/admin/settings">
+            <i class="bi bi-sliders"></i> システム設定
+        </a>
+    </li>
+</ul>

@@ -59,32 +59,42 @@
     <div class="login-container">
         <div class="login-header">
             <h1>RPO Automation System</h1>
-            <p>採用業務自動化システム</p>
+            <p>採用代行業務自動化システム</p>
         </div>
-
+        
         {% if error %}
         <div class="alert alert-danger" role="alert">
-            {{ error }}
+            {% if error == "Unauthorized" %}
+                ログインが必要です
+            {% elif error == "Invalid credentials" %}
+                メールアドレスまたはパスワードが正しくありません
+            {% else %}
+                {{ error }}
+            {% endif %}
         </div>
         {% endif %}
-
-        <form method="POST" action="/api/auth/login-form">
+        
+        <form method="POST" action="/api/auth/login">
             <div class="mb-3">
                 <label for="email" class="form-label">メールアドレス</label>
-                <input type="email" class="form-control" id="email" name="email" required autofocus>
+                <input type="email" class="form-control" id="email" name="email" required>
             </div>
-            
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="password" class="form-label">パスワード</label>
                 <input type="password" class="form-control" id="password" name="password" required>
             </div>
-
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="remember">
+                <label class="form-check-label" for="remember">
+                    ログイン情報を記憶する
+                </label>
+            </div>
             <button type="submit" class="btn btn-login w-100">ログイン</button>
         </form>
-
-        <div class="mt-4 text-center text-muted">
-            <small>
-                ログイン情報をお忘れの場合は、システム管理者にお問い合わせください。
+        
+        <div class="text-center mt-3">
+            <small class="text-muted">
+                © 2024 RPO Automation System
             </small>
         </div>
     </div>

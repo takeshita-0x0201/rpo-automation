@@ -1,0 +1,219 @@
+{% extends "common/_base.html" %}
+
+{% block title %}システム設定{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">システム設定</h1>
+
+<!-- 設定タブ -->
+<ul class="nav nav-tabs mb-4" id="settingsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button">
+            <i class="bi bi-gear"></i> 一般設定
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="api-tab" data-bs-toggle="tab" data-bs-target="#api" type="button">
+            <i class="bi bi-key"></i> API設定
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="scraping-tab" data-bs-toggle="tab" data-bs-target="#scraping" type="button">
+            <i class="bi bi-globe"></i> スクレイピング設定
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="notification-tab" data-bs-toggle="tab" data-bs-target="#notification" type="button">
+            <i class="bi bi-bell"></i> 通知設定
+        </button>
+    </li>
+</ul>
+
+<!-- 設定コンテンツ -->
+<div class="tab-content" id="settingsTabContent">
+    <!-- 一般設定 -->
+    <div class="tab-pane fade show active" id="general" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">一般設定</h5>
+                <form method="POST" action="/admin/settings/general">
+                    <div class="mb-3">
+                        <label for="system_name" class="form-label">システム名</label>
+                        <input type="text" class="form-control" id="system_name" name="system_name" 
+                               value="{{ settings.system_name or 'RPO Automation System' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label">タイムゾーン</label>
+                        <select class="form-select" id="timezone" name="timezone">
+                            <option value="Asia/Tokyo" selected>日本標準時 (JST)</option>
+                            <option value="UTC">協定世界時 (UTC)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="language" class="form-label">言語</label>
+                        <select class="form-select" id="language" name="language">
+                            <option value="ja" selected>日本語</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="max_concurrent_jobs" class="form-label">最大同時実行ジョブ数</label>
+                        <input type="number" class="form-control" id="max_concurrent_jobs" 
+                               name="max_concurrent_jobs" min="1" max="10" 
+                               value="{{ settings.max_concurrent_jobs or 3 }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- API設定 -->
+    <div class="tab-pane fade" id="api" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">API設定</h5>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    APIキーは暗号化されて保存されます。変更する場合のみ入力してください。
+                </div>
+                <form method="POST" action="/admin/settings/api">
+                    <div class="mb-3">
+                        <label for="openai_api_key" class="form-label">OpenAI APIキー</label>
+                        <input type="password" class="form-control" id="openai_api_key" 
+                               name="openai_api_key" placeholder="sk-...">
+                        <div class="form-text">GPT-4を使用した候補者分析に必要です</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="bizreach_api_key" class="form-label">Bizreach APIキー</label>
+                        <input type="password" class="form-control" id="bizreach_api_key" 
+                               name="bizreach_api_key" placeholder="入力して変更">
+                        <div class="form-text">Bizreachからの候補者情報取得に必要です</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="slack_webhook_url" class="form-label">Slack Webhook URL</label>
+                        <input type="url" class="form-control" id="slack_webhook_url" 
+                               name="slack_webhook_url" placeholder="https://hooks.slack.com/...">
+                        <div class="form-text">通知送信用（オプション）</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- スクレイピング設定 -->
+    <div class="tab-pane fade" id="scraping" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">スクレイピング設定</h5>
+                <form method="POST" action="/admin/settings/scraping">
+                    <div class="mb-3">
+                        <label for="request_delay" class="form-label">リクエスト間隔（秒）</label>
+                        <input type="number" class="form-control" id="request_delay" 
+                               name="request_delay" min="1" max="10" step="0.5"
+                               value="{{ settings.request_delay or 2 }}">
+                        <div class="form-text">スクレイピング時のリクエスト間隔</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="max_retries" class="form-label">最大リトライ回数</label>
+                        <input type="number" class="form-control" id="max_retries" 
+                               name="max_retries" min="0" max="5"
+                               value="{{ settings.max_retries or 3 }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="timeout" class="form-label">タイムアウト（秒）</label>
+                        <input type="number" class="form-control" id="timeout" 
+                               name="timeout" min="10" max="300"
+                               value="{{ settings.timeout or 30 }}">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="use_proxy" 
+                                   name="use_proxy" {% if settings.use_proxy %}checked{% endif %}>
+                            <label class="form-check-label" for="use_proxy">
+                                プロキシを使用する
+                            </label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知設定 -->
+    <div class="tab-pane fade" id="notification" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">通知設定</h5>
+                <form method="POST" action="/admin/settings/notification">
+                    <h6 class="mb-3">メール通知</h6>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="email_on_job_complete" 
+                                   name="email_on_job_complete" {% if settings.email_on_job_complete %}checked{% endif %}>
+                            <label class="form-check-label" for="email_on_job_complete">
+                                ジョブ完了時にメール通知
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="email_on_error" 
+                                   name="email_on_error" {% if settings.email_on_error %}checked{% endif %}>
+                            <label class="form-check-label" for="email_on_error">
+                                エラー発生時にメール通知
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <h6 class="mb-3 mt-4">Slack通知</h6>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="slack_on_job_complete" 
+                                   name="slack_on_job_complete" {% if settings.slack_on_job_complete %}checked{% endif %}>
+                            <label class="form-check-label" for="slack_on_job_complete">
+                                ジョブ完了時にSlack通知
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="slack_on_error" 
+                                   name="slack_on_error" {% if settings.slack_on_error %}checked{% endif %}>
+                            <label class="form-check-label" for="slack_on_error">
+                                エラー発生時にSlack通知
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if message %}
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div class="toast show" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto">システム設定</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+            {{ message }}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -75,9 +75,45 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return user_info
 
-@router.post("/login", response_model=Token)
-async def login(request: LoginRequest):
-    """ログインAPI"""
+@router.post("/login")
+async def login(response: Response, email: str = Form(...), password: str = Form(...)):
+    """ログインAPI（フォームデータ対応）"""
+    result = await SupabaseAuth.sign_in(email, password)
+    
+    if not result["success"]:
+        raise HTTPException(
+            status_code=401,
+            detail=result.get("error", "Invalid credentials")
+        )
+    
+    # JWTトークンを作成
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": result["user"].id, "role": result["role"], "email": result["user"].email},
+        expires_delta=access_token_expires
+    )
+    
+    # ロールに基づいてリダイレクト先を決定
+    if result["role"] == "admin":
+        redirect_url = "/admin"
+    else:
+        redirect_url = "/user"
+    
+    # Cookieにトークンを設定してリダイレクト
+    redirect_response = RedirectResponse(url=redirect_url, status_code=303)
+    redirect_response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        samesite="lax"
+    )
+    
+    return redirect_response
+
+@router.post("/login/api", response_model=Token)
+async def login_api(request: LoginRequest):
+    """ログインAPI（JSON対応）"""
     result = await SupabaseAuth.sign_in(request.email, request.password)
     
     if not result["success"]:

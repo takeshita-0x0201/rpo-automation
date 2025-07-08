@@ -1,0 +1,94 @@
+
+
+{% extends "common/_base.html" %}
+
+{% block title %}クライアント企業一覧{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">クライアント企業一覧</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="/admin/clients/new" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-plus-circle"></i>
+            新規クライアント追加
+        </a>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    {{ error }}
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>企業ID</th>
+                        <th>企業名</th>
+                        <th>直接スクレイピング許可</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in clients %}
+                    <tr>
+                        <td>{{ client.company_id }}</td>
+                        <td>{{ client.name }}</td>
+                        <td><span class="badge {{ 'bg-success' if client.allows_direct_scraping else 'bg-secondary' }}">{{ "許可" if client.allows_direct_scraping else "不可" }}</span></td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="/admin/clients/{{ client.id }}/edit" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-pencil"></i> 編集
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteModal{{ loop.index }}">
+                                    <i class="bi bi-trash"></i> 削除
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center">クライアントデータがありません。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 削除確認モーダル -->
+{% for client in clients %}
+<div class="modal fade" id="deleteModal{{ loop.index }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">クライアント削除の確認</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>以下のクライアントを削除してもよろしいですか？</p>
+                <p class="text-danger">この操作は取り消せません。</p>
+                <ul>
+                    <li>企業ID: {{ client.company_id }}</li>
+                    <li>企業名: {{ client.name }}</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <form method="POST" action="/admin/clients/{{ client.id }}/delete" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">削除する</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+

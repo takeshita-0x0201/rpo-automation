@@ -1,0 +1,228 @@
+{% extends "common/_base.html" %}
+
+{% block title %}検索結果{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>検索結果</h1>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="exportResults()">
+            <i class="bi bi-download"></i> エクスポート
+        </button>
+        <a href="/user/search" class="btn btn-primary">
+            <i class="bi bi-search"></i> 新規検索
+        </a>
+    </div>
+</div>
+
+<!-- 検索結果サマリー -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <h6 class="text-muted">総候補者数</h6>
+                <h3>{{ total_count or 0 }}</h3>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted">マッチ度80%以上</h6>
+                <h3 class="text-success">{{ high_match_count or 0 }}</h3>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted">検索日時</h6>
+                <p>{{ search_date or "-" }}</p>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted">採用要件</h6>
+                <p>{{ requirement_name or "-" }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- フィルターとソート -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="form-label">マッチ度</label>
+                <select class="form-select" onchange="filterResults()">
+                    <option value="">全て表示</option>
+                    <option value="80">80%以上</option>
+                    <option value="60">60%以上</option>
+                    <option value="40">40%以上</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">ステータス</label>
+                <select class="form-select" onchange="filterResults()">
+                    <option value="">全て</option>
+                    <option value="new">新規</option>
+                    <option value="reviewed">確認済み</option>
+                    <option value="contacted">コンタクト済み</option>
+                    <option value="rejected">見送り</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">並び順</label>
+                <select class="form-select" onchange="sortResults()">
+                    <option value="match_desc">マッチ度 高い順</option>
+                    <option value="match_asc">マッチ度 低い順</option>
+                    <option value="date_desc">新着順</option>
+                    <option value="date_asc">古い順</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-success w-100" onclick="showBulkActions()">
+                    <i class="bi bi-check-square"></i> 一括操作
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 候補者リスト -->
+{% if candidates %}
+<div class="row">
+    {% for candidate in candidates %}
+    <div class="col-12 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title">
+                                <i class="bi bi-person-circle"></i> 候補者 #{{ candidate.id[:8] }}
+                            </h5>
+                            <div>
+                                <span class="badge bg-primary">マッチ度: {{ candidate.match_score }}%</span>
+                                {% if candidate.status == "new" %}
+                                    <span class="badge bg-info">新規</span>
+                                {% elif candidate.status == "reviewed" %}
+                                    <span class="badge bg-secondary">確認済み</span>
+                                {% elif candidate.status == "contacted" %}
+                                    <span class="badge bg-success">コンタクト済み</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>現在の職種・経験</h6>
+                            <p class="mb-1">{{ candidate.current_position or "非公開" }}</p>
+                            <p class="text-muted">経験年数: {{ candidate.experience_years or "-" }}年</p>
+                        </div>
+
+                        <div class="mb-3">
+                            <h6>スキル</h6>
+                            <div>
+                                {% for skill in candidate.skills[:10] %}
+                                <span class="badge bg-light text-dark me-1 mb-1">{{ skill }}</span>
+                                {% endfor %}
+                                {% if candidate.skills|length > 10 %}
+                                <span class="text-muted">他{{ candidate.skills|length - 10 }}件</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <small class="text-muted">希望年収</small>
+                                <p>{{ candidate.desired_salary or "非公開" }}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">現在地</small>
+                                <p>{{ candidate.location or "非公開" }}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">転職意欲</small>
+                                <p>{{ candidate.job_change_desire or "-" }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6>マッチ理由</h6>
+                                <ul class="small mb-3">
+                                    {% for reason in candidate.match_reasons[:3] %}
+                                    <li>{{ reason }}</li>
+                                    {% endfor %}
+                                </ul>
+                                
+                                <div class="d-grid gap-2">
+                                    <a href="/user/candidates/{{ candidate.id }}" class="btn btn-primary btn-sm">
+                                        <i class="bi bi-eye"></i> 詳細を見る
+                                    </a>
+                                    <button class="btn btn-success btn-sm" onclick="contactCandidate('{{ candidate.id }}')">
+                                        <i class="bi bi-envelope"></i> コンタクト
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="rejectCandidate('{{ candidate.id }}')">
+                                        <i class="bi bi-x-circle"></i> 見送り
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ページネーション -->
+<nav aria-label="検索結果ページ">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ current_page - 1 }}">前へ</a>
+        </li>
+        {% for page in range(1, total_pages + 1) %}
+        <li class="page-item {% if page == current_page %}active{% endif %}">
+            <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ current_page + 1 }}">次へ</a>
+        </li>
+    </ul>
+</nav>
+{% else %}
+<div class="alert alert-info">
+    検索結果がありません。検索条件を変更してお試しください。
+</div>
+{% endif %}
+
+<script>
+function filterResults() {
+    // TODO: フィルター実装
+    console.log('Filter results');
+}
+
+function sortResults() {
+    // TODO: ソート実装
+    console.log('Sort results');
+}
+
+function exportResults() {
+    // TODO: エクスポート実装
+    console.log('Export results');
+}
+
+function contactCandidate(candidateId) {
+    // TODO: コンタクト機能実装
+    console.log('Contact candidate:', candidateId);
+}
+
+function rejectCandidate(candidateId) {
+    if (confirm('この候補者を見送りにしますか？')) {
+        // TODO: 見送り処理実装
+        console.log('Reject candidate:', candidateId);
+    }
+}
+
+function showBulkActions() {
+    // TODO: 一括操作実装
+    console.log('Show bulk actions');
+}
+</script>
+{% endblock %}

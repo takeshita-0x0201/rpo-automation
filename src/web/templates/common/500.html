@@ -1,0 +1,49 @@
+{% extends "common/_base.html" %}
+
+{% block title %}500 - サーバーエラー{% endblock %}
+
+{% block head_style %}
+<style>
+    .error-container {
+        text-align: center;
+        padding: 50px;
+    }
+    .error-code {
+        font-size: 120px;
+        font-weight: bold;
+        color: #dc3545;
+        margin-bottom: 20px;
+    }
+    .error-message {
+        font-size: 24px;
+        color: #666;
+        margin-bottom: 30px;
+    }
+    .error-detail {
+        color: #999;
+        margin-bottom: 30px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-code">500</div>
+    <div class="error-message">サーバーエラーが発生しました</div>
+    <div class="error-detail">
+        申し訳ございません。サーバーで予期しないエラーが発生しました。<br>
+        しばらく時間をおいてから再度お試しください。
+    </div>
+    <div>
+        {% if current_user %}
+            {% if current_user.role == 'admin' %}
+                <a href="/admin" class="btn btn-primary">管理画面に戻る</a>
+            {% else %}
+                <a href="/user" class="btn btn-primary">ダッシュボードに戻る</a>
+            {% endif %}
+        {% else %}
+            <a href="/login" class="btn btn-primary">ログインページへ</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

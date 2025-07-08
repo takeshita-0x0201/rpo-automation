@@ -1,0 +1,146 @@
+{% extends "common/_base.html" %}
+
+{% block title %}ジョブ管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>ジョブ管理</h1>
+    <div>
+        <button class="btn btn-success" onclick="refreshJobs()">
+            <i class="bi bi-arrow-clockwise"></i> 更新
+        </button>
+    </div>
+</div>
+
+<!-- ジョブ統計 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">実行中</h5>
+                <p class="card-text display-6">{{ running_count or 0 }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">完了</h5>
+                <p class="card-text display-6">{{ completed_count or 0 }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">待機中</h5>
+                <p class="card-text display-6">{{ pending_count or 0 }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <h5 class="card-title">エラー</h5>
+                <p class="card-text display-6">{{ error_count or 0 }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ジョブ一覧 -->
+{% if jobs %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>ジョブID</th>
+                <th>タイプ</th>
+                <th>クライアント</th>
+                <th>ステータス</th>
+                <th>進捗</th>
+                <th>開始時刻</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td><code>{{ job.id[:8] }}...</code></td>
+                <td>
+                    {% if job.job_type == "search" %}
+                        <i class="bi bi-search"></i> 検索
+                    {% elif job.job_type == "scrape" %}
+                        <i class="bi bi-download"></i> スクレイピング
+                    {% else %}
+                        {{ job.job_type }}
+                    {% endif %}
+                </td>
+                <td>{{ job.client_name or "-" }}</td>
+                <td>
+                    {% if job.status == "running" %}
+                        <span class="badge bg-primary">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            実行中
+                        </span>
+                    {% elif job.status == "completed" %}
+                        <span class="badge bg-success">完了</span>
+                    {% elif job.status == "failed" %}
+                        <span class="badge bg-danger">エラー</span>
+                    {% elif job.status == "pending" %}
+                        <span class="badge bg-warning">待機中</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ job.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="progress" style="width: 100px;">
+                        <div class="progress-bar" role="progressbar" 
+                             style="width: {{ job.progress or 0 }}%"
+                             aria-valuenow="{{ job.progress or 0 }}" 
+                             aria-valuemin="0" aria-valuemax="100">
+                            {{ job.progress or 0 }}%
+                        </div>
+                    </div>
+                </td>
+                <td>{{ job.started_at[:16] if job.started_at else "-" }}</td>
+                <td>
+                    <div class="btn-group" role="group">
+                        <a href="/admin/jobs/{{ job.id }}/details" class="btn btn-sm btn-outline-info">
+                            <i class="bi bi-info-circle"></i> 詳細
+                        </a>
+                        {% if job.status == "running" %}
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="cancelJob('{{ job.id }}')">
+                            <i class="bi bi-stop-circle"></i> 停止
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    現在実行中のジョブはありません。
+</div>
+{% endif %}
+
+<script>
+function refreshJobs() {
+    location.reload();
+}
+
+function cancelJob(jobId) {
+    if (confirm('このジョブを停止してもよろしいですか？')) {
+        fetch(`/admin/jobs/${jobId}/cancel`, { method: 'POST' })
+            .then(() => location.reload());
+    }
+}
+
+// 自動更新（5秒ごと）
+setInterval(refreshJobs, 5000);
+</script>
+{% endblock %}

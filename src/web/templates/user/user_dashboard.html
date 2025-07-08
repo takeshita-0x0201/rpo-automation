@@ -1,0 +1,62 @@
+
+{% extends "common/_base.html" %}
+
+{% block title %}ユーザーダッシュボード{% endblock %}
+
+{% block head_style %}
+<style>
+.task-card {
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+.task-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+.task-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-4">ダッシュボード</h1>
+
+<!-- クイックアクション -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card task-card text-center bg-primary text-white" onclick="location.href='/user/requirements/new'">
+            <div class="card-body">
+                <i class="bi bi-plus-circle task-icon"></i>
+                <h5 class="card-title">新規採用要件作成</h5>
+                <p class="card-text">クライアントの採用要件を登録</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card task-card text-center bg-success text-white" onclick="location.href='/user/search'">
+            <div class="card-body">
+                <i class="bi bi-play-circle task-icon"></i>
+                <h5 class="card-title">候補者検索実行</h5>
+                <p class="card-text">Bizreachから候補者を検索</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card task-card text-center bg-info text-white" onclick="location.href='/user/results'">
+            <div class="card-body">
+                <i class="bi bi-graph-up task-icon"></i>
+                <h5 class="card-title">結果確認</h5>
+                <p class="card-text">AI判定結果を確認</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- (以下、コンテンツは省略) -->
+
+{% endblock %}

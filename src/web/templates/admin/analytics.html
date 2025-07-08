@@ -1,0 +1,208 @@
+{% extends "common/_base.html" %}
+
+{% block title %}分析レポート{% endblock %}
+
+{% block head_style %}
+<style>
+.metric-card {
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+}
+.metric-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin-bottom: 30px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>分析レポート</h1>
+    <div>
+        <select class="form-select" onchange="changePeriod(this.value)">
+            <option value="week">過去1週間</option>
+            <option value="month" selected>過去1ヶ月</option>
+            <option value="quarter">過去3ヶ月</option>
+            <option value="year">過去1年</option>
+        </select>
+    </div>
+</div>
+
+<!-- KPIメトリクス -->
+<div class="row">
+    <div class="col-md-3">
+        <div class="metric-card bg-primary text-white">
+            <div class="metric-label">総検索数</div>
+            <div class="metric-value">{{ total_searches or 0 }}</div>
+            <div class="text-white-50">
+                <i class="bi bi-arrow-up"></i> 前月比 +12%
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-success text-white">
+            <div class="metric-label">候補者数</div>
+            <div class="metric-value">{{ total_candidates or 0 }}</div>
+            <div class="text-white-50">
+                <i class="bi bi-arrow-up"></i> 前月比 +8%
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-warning text-white">
+            <div class="metric-label">アクティブ要件</div>
+            <div class="metric-value">{{ active_requirements or 0 }}</div>
+            <div class="text-white-50">
+                現在進行中
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-info text-white">
+            <div class="metric-label">成功率</div>
+            <div class="metric-value">{{ success_rate or 0 }}%</div>
+            <div class="text-white-50">
+                検索成功率
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- チャートセクション -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">日別検索数推移</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="searchTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">クライアント別実績</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="clientChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 詳細テーブル -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">クライアント別詳細</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>クライアント</th>
+                                <th>検索数</th>
+                                <th>候補者数</th>
+                                <th>成功率</th>
+                                <th>平均処理時間</th>
+                                <th>最終実行</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in client_stats %}
+                            <tr>
+                                <td>{{ stat.client_name }}</td>
+                                <td>{{ stat.search_count }}</td>
+                                <td>{{ stat.candidate_count }}</td>
+                                <td>
+                                    <div class="progress" style="width: 100px;">
+                                        <div class="progress-bar" role="progressbar" 
+                                             style="width: {{ stat.success_rate }}%">
+                                            {{ stat.success_rate }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ stat.avg_time }}分</td>
+                                <td>{{ stat.last_run[:10] if stat.last_run else "-" }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center">データがありません</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// ダミーデータでチャートを初期化（実際のデータはAPIから取得）
+const searchCtx = document.getElementById('searchTrendChart').getContext('2d');
+new Chart(searchCtx, {
+    type: 'line',
+    data: {
+        labels: ['1日', '2日', '3日', '4日', '5日', '6日', '7日'],
+        datasets: [{
+            label: '検索数',
+            data: [12, 19, 3, 5, 2, 3, 10],
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
+    }
+});
+
+const clientCtx = document.getElementById('clientChart').getContext('2d');
+new Chart(clientCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['クライアントA', 'クライアントB', 'クライアントC', 'その他'],
+        datasets: [{
+            data: [30, 25, 20, 25],
+            backgroundColor: [
+                'rgba(255, 99, 132, 0.8)',
+                'rgba(54, 162, 235, 0.8)',
+                'rgba(255, 205, 86, 0.8)',
+                'rgba(75, 192, 192, 0.8)'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
+    }
+});
+
+function changePeriod(period) {
+    // 期間変更時の処理
+    console.log('Period changed to:', period);
+    // TODO: APIから新しいデータを取得して更新
+}
+</script>
+{% endblock %}

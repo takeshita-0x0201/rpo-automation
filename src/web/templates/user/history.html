@@ -1,0 +1,213 @@
+{% extends "common/_base.html" %}
+
+{% block title %}実行履歴{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>実行履歴</h1>
+    <button class="btn btn-outline-secondary" onclick="clearFilters()">
+        <i class="bi bi-funnel"></i> フィルターをクリア
+    </button>
+</div>
+
+<!-- フィルター -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="/user/history">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">期間</label>
+                    <select name="period" class="form-select">
+                        <option value="">全期間</option>
+                        <option value="today">今日</option>
+                        <option value="week">過去1週間</option>
+                        <option value="month" selected>過去1ヶ月</option>
+                        <option value="3months">過去3ヶ月</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">タイプ</label>
+                    <select name="type" class="form-select">
+                        <option value="">全て</option>
+                        <option value="search">検索</option>
+                        <option value="scraping">スクレイピング</option>
+                        <option value="contact">コンタクト</option>
+                        <option value="export">エクスポート</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">ステータス</label>
+                    <select name="status" class="form-select">
+                        <option value="">全て</option>
+                        <option value="completed">完了</option>
+                        <option value="running">実行中</option>
+                        <option value="failed">失敗</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-filter"></i> 適用
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 統計情報 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">総実行数</h5>
+                <p class="display-6">{{ total_executions or 0 }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">成功率</h5>
+                <p class="display-6 text-success">{{ success_rate or 0 }}%</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">総候補者数</h5>
+                <p class="display-6">{{ total_candidates_found or 0 }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">平均処理時間</h5>
+                <p class="display-6">{{ avg_processing_time or 0 }}分</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 履歴一覧 -->
+{% if history %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>実行日時</th>
+                <th>タイプ</th>
+                <th>対象</th>
+                <th>結果</th>
+                <th>処理時間</th>
+                <th>ステータス</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in history %}
+            <tr>
+                <td>{{ item.executed_at[:16] if item.executed_at else "-" }}</td>
+                <td>
+                    {% if item.type == "search" %}
+                        <i class="bi bi-search"></i> 検索
+                    {% elif item.type == "scraping" %}
+                        <i class="bi bi-download"></i> スクレイピング
+                    {% elif item.type == "contact" %}
+                        <i class="bi bi-envelope"></i> コンタクト
+                    {% elif item.type == "export" %}
+                        <i class="bi bi-file-earmark-arrow-down"></i> エクスポート
+                    {% else %}
+                        {{ item.type }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.requirement_name %}
+                        {{ item.requirement_name }}
+                    {% else %}
+                        {{ item.target or "-" }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.type == "search" %}
+                        {{ item.candidates_found or 0 }}件
+                    {% elif item.type == "contact" %}
+                        {{ item.contacts_sent or 0 }}件送信
+                    {% else %}
+                        {{ item.result or "-" }}
+                    {% endif %}
+                </td>
+                <td>{{ item.processing_time or "-" }}</td>
+                <td>
+                    {% if item.status == "completed" %}
+                        <span class="badge bg-success">完了</span>
+                    {% elif item.status == "running" %}
+                        <span class="badge bg-primary">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            実行中
+                        </span>
+                    {% elif item.status == "failed" %}
+                        <span class="badge bg-danger">失敗</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ item.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group" role="group">
+                        <a href="/user/history/{{ item.id }}" class="btn btn-sm btn-outline-info">
+                            <i class="bi bi-info-circle"></i> 詳細
+                        </a>
+                        {% if item.type == "search" and item.status == "completed" %}
+                        <a href="/user/results?search_id={{ item.id }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i> 結果
+                        </a>
+                        {% endif %}
+                        {% if item.status == "running" %}
+                        <button class="btn btn-sm btn-outline-danger" onclick="cancelExecution('{{ item.id }}')">
+                            <i class="bi bi-stop-circle"></i> 停止
+                        </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ページネーション -->
+<nav aria-label="履歴ページ">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ current_page - 1 }}">前へ</a>
+        </li>
+        {% for page in range(1, total_pages + 1) %}
+        <li class="page-item {% if page == current_page %}active{% endif %}">
+            <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ current_page + 1 }}">次へ</a>
+        </li>
+    </ul>
+</nav>
+{% else %}
+<div class="alert alert-info">
+    実行履歴がありません。
+</div>
+{% endif %}
+
+<script>
+function clearFilters() {
+    window.location.href = '/user/history';
+}
+
+function cancelExecution(executionId) {
+    if (confirm('この処理を停止しますか？')) {
+        fetch(`/user/history/${executionId}/cancel`, { method: 'POST' })
+            .then(() => location.reload());
+    }
+}
+</script>
+{% endblock %}

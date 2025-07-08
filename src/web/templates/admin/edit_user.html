@@ -1,0 +1,63 @@
+{% extends "common/_base.html" %}
+
+{% block title %}ユーザー編集{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <h1 class="mb-4">ユーザー編集</h1>
+        
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">アカウント情報</h6>
+                <p class="mb-1"><strong>メールアドレス:</strong> {{ user.email }}</p>
+                <p class="mb-0"><strong>ユーザーID:</strong> <code>{{ user.id }}</code></p>
+            </div>
+        </div>
+        
+        <form method="POST" action="/admin/users/{{ user.id }}/edit">
+            <div class="mb-3">
+                <label for="role" class="form-label">役職 <span class="text-danger">*</span></label>
+                <select class="form-select" id="role" name="role" required>
+                    {% for role in roles %}
+                    <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>
+                        {% if role == "admin" %}
+                            管理者 - システム全体の管理権限
+                        {% elif role == "manager" %}
+                            マネージャー - クライアント管理・レポート閲覧
+                        {% elif role == "operator" %}
+                            オペレーター - 基本的な操作権限
+                        {% else %}
+                            {{ role }}
+                        {% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            {% if user.id == current_user.id %}
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                自分自身の権限を変更する場合は注意してください。管理者権限を失うと、このページにアクセスできなくなります。
+            </div>
+            {% endif %}
+            
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> 変更を保存
+                </button>
+                <a href="/admin/users" class="btn btn-secondary">キャンセル</a>
+            </div>
+        </form>
+        
+        <hr class="my-4">
+        
+        <div class="text-muted">
+            <small>
+                <strong>作成日時:</strong> {{ user.created_at if user.created_at else "-" }}<br>
+                <strong>更新日時:</strong> {{ user.updated_at if user.updated_at else "-" }}
+            </small>
+        </div>
+    </div>
+</div>
+{% endblock %}
