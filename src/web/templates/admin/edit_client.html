@@ -1,8 +1,8 @@
-{% extends "common/_base.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}クライアント編集{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="row justify-content-center">
     <div class="col-lg-6">
         <h1 class="mb-4">クライアント編集</h1>
@@ -15,7 +15,7 @@
             </div>
         </div>
         
-        <form method="POST" action="/admin/clients/{{ client.id }}/edit">
+        <form method="POST" action="{{ base_path }}/clients/{{ client.id }}/edit">
             <div class="mb-3">
                 <label for="company_id" class="form-label">企業ID <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="company_id" name="company_id" 

@@ -1,0 +1,14 @@
+/* RPO Automation Extension - Overlay Styles */
+/* Note: Main styles are defined in ui-overlay.js using Shadow DOM */
+
+/* Extension root element */
+#rpo-scraping-overlay {
+  /* Ensure the overlay is always on top */
+  z-index: 2147483647 !important;
+}
+
+/* Prevent conflicts with page styles */
+#rpo-scraping-overlay * {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}

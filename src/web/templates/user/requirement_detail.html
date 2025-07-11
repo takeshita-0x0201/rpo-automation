@@ -1,0 +1,112 @@
+{% extends "common/_base.html" %}
+
+{% block title %}採用要件詳細{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>採用要件詳細</h1>
+        <div>
+            {% if current_user.role in ['manager', 'admin'] %}
+            <a href="/user/requirements/{{ requirement.id }}/edit" class="btn btn-primary">
+                <i class="bi bi-pencil"></i> 編集
+            </a>
+            {% endif %}
+            <a href="/user/requirements" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> 一覧に戻る
+            </a>
+        </div>
+    </div>
+
+    {% if success == 'updated' %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        採用要件が正常に更新されました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">{{ requirement.title }}</h3>
+                {% if requirement.is_active %}
+                    <span class="badge bg-success">有効</span>
+                {% else %}
+                    <span class="badge bg-secondary">無効</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <p><strong>クライアント:</strong> {{ requirement.client_name }}</p>
+                    <p><strong>作成日:</strong> {{ requirement.created_at[:10] if requirement.created_at else "-" }}</p>
+                    <p><strong>更新日:</strong> {{ requirement.updated_at[:10] if requirement.updated_at else "-" }}</p>
+                </div>
+                <div class="col-md-6">
+                    {% if requirement.is_active %}
+                    <div class="d-grid gap-2">
+                        <a href="/user/jobs?requirement_id={{ requirement.id }}" class="btn btn-success">
+                            <i class="bi bi-play-circle"></i> この要件でジョブを実行
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <h5>詳細説明</h5>
+            <div class="border rounded p-3 mb-4 bg-light">
+                <pre class="mb-0" style="white-space: pre-wrap;">{{ requirement.description }}</pre>
+            </div>
+
+            {% if requirement.structured_data %}
+            <h5>構造化データ</h5>
+            <div class="border rounded p-3 bg-light">
+                <pre class="mb-0"><code>{{ requirement.structured_data | tojson(indent=2) }}</code></pre>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 関連するジョブ履歴 -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">実行履歴</h5>
+        </div>
+        <div class="card-body">
+            {% if jobs %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>実行日時</th>
+                            <th>ステータス</th>
+                            <th>処理件数</th>
+                            <th>アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in jobs %}
+                        <tr>
+                            <td>{{ job.started_at[:16] if job.started_at else "-" }}</td>
+                            <td>
+                                <span class="badge bg-{{ job.status_color }}">{{ job.status_display }}</span>
+                            </td>
+                            <td>{{ job.processed_count }}/{{ job.total_count }}</td>
+                            <td>
+                                <a href="/user/jobs/{{ job.id }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i> 詳細
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">まだジョブが実行されていません。</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

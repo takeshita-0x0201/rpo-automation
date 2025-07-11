@@ -1,14 +1,14 @@
 
 
-{% extends "common/_base.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}クライアント企業一覧{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">クライアント企業一覧</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="/admin/clients/new" class="btn btn-sm btn-outline-primary">
+        <a href="{{ base_path }}/clients/new" class="btn btn-sm btn-outline-primary">
             <i class="bi bi-plus-circle"></i>
             新規クライアント追加
         </a>
@@ -29,6 +29,7 @@
                     <tr>
                         <th>企業ID</th>
                         <th>企業名</th>
+                        <th>スカウト媒体</th>
                         <th>直接スクレイピング許可</th>
                         <th>操作</th>
                     </tr>
@@ -38,10 +39,11 @@
                     <tr>
                         <td>{{ client.company_id }}</td>
                         <td>{{ client.name }}</td>
+                        <td>{{ client.scout_media }}</td>
                         <td><span class="badge {{ 'bg-success' if client.allows_direct_scraping else 'bg-secondary' }}">{{ "許可" if client.allows_direct_scraping else "不可" }}</span></td>
                         <td>
                             <div class="btn-group" role="group">
-                                <a href="/admin/clients/{{ client.id }}/edit" class="btn btn-sm btn-outline-primary">
+                                <a href="{{ base_path }}/clients/{{ client.id }}/edit" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-pencil"></i> 編集
                                 </a>
                                 <button type="button" class="btn btn-sm btn-outline-danger" 
@@ -82,7 +84,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                <form method="POST" action="/admin/clients/{{ client.id }}/delete" style="display: inline;">
+                <form method="POST" action="{{ base_path }}/clients/{{ client.id }}/delete" style="display: inline;">
                     <button type="submit" class="btn btn-danger">削除する</button>
                 </form>
             </div>

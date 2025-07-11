@@ -1,0 +1,386 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}候補者選択 - {{ job.id[:8] }}{% endblock %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1>AIマッチング結果 - 候補者選択</h1>
+        <p class="text-muted mb-0">
+            クライアント: {{ job.client.name }} / 
+            要件: {{ job.requirement.title if job.requirement else 'N/A' }}
+        </p>
+    </div>
+    <div>
+        <a href="{{ base_path }}/jobs" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> ジョブ一覧に戻る
+        </a>
+    </div>
+</div>
+
+<!-- 統計情報 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">総候補者数</h5>
+                <p class="card-text display-6">{{ stats.total }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">強く推奨</h5>
+                <p class="card-text display-6">{{ stats.high }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">推奨</h5>
+                <p class="card-text display-6">{{ stats.medium }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-secondary">
+            <div class="card-body">
+                <h5 class="card-title">要検討</h5>
+                <p class="card-text display-6">{{ stats.low }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- フィルタとアクション -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="btn-group" role="group">
+                    <button class="btn btn-outline-primary active" onclick="filterByScore('all')">
+                        全て表示
+                    </button>
+                    <button class="btn btn-outline-success" onclick="filterByScore('high')">
+                        強く推奨のみ
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="filterByScore('medium')">
+                        推奨以上
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <span class="me-3">
+                    <span id="selected-count" class="badge bg-primary">0</span>件選択中
+                </span>
+                <button class="btn btn-primary" onclick="exportToSheets()" disabled>
+                    <i class="bi bi-file-earmark-spreadsheet"></i> 送客リストに追加
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 候補者一覧 -->
+{% if evaluations %}
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th width="40">
+                    <input type="checkbox" id="select-all" class="form-check-input">
+                </th>
+                <th>候補者ID</th>
+                <th>会社名</th>
+                <th width="150">AIスコア</th>
+                <th>推奨度</th>
+                <th>マッチ理由</th>
+                <th>懸念事項</th>
+                <th width="80">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eval in evaluations %}
+            <tr class="candidate-row" data-score="{{ eval.recommendation }}">
+                <td>
+                    <input type="checkbox" 
+                           class="form-check-input candidate-select" 
+                           value="{{ eval.candidate_id }}"
+                           data-evaluation='{{ eval | tojson }}'>
+                </td>
+                <td>
+                    <code>{{ eval.candidate.candidate_id }}</code>
+                </td>
+                <td>
+                    {{ eval.candidate.candidate_company or '-' }}
+                </td>
+                <td>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar 
+                             {% if eval.ai_score >= 0.8 %}bg-success
+                             {% elif eval.ai_score >= 0.6 %}bg-warning
+                             {% else %}bg-danger{% endif %}"
+                             style="width: {{ eval.ai_score * 100 }}%">
+                            {{ "%.0f"|format(eval.ai_score * 100) }}%
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge bg-{{ eval.recommendation_color }} p-2">
+                        {{ eval.recommendation_text }}
+                    </span>
+                </td>
+                <td>
+                    {% if eval.match_reasons %}
+                        <ul class="mb-0 small">
+                            {% for reason in eval.match_reasons[:2] %}
+                            <li>{{ reason }}</li>
+                            {% endfor %}
+                            {% if eval.match_reasons|length > 2 %}
+                            <li class="text-muted">他{{ eval.match_reasons|length - 2 }}件</li>
+                            {% endif %}
+                        </ul>
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if eval.concerns %}
+                        <ul class="mb-0 small text-danger">
+                            {% for concern in eval.concerns[:1] %}
+                            <li>{{ concern }}</li>
+                            {% endfor %}
+                            {% if eval.concerns|length > 1 %}
+                            <li>他{{ eval.concerns|length - 1 }}件</li>
+                            {% endif %}
+                        </ul>
+                    {% else %}
+                        <span class="text-success">なし</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-info" 
+                                onclick="showCandidateDetail('{{ eval.candidate_id }}')"
+                                title="詳細表示">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <a href="{{ eval.candidate.candidate_link }}" 
+                           target="_blank"
+                           class="btn btn-sm btn-outline-primary"
+                           title="元ページを開く">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    このジョブにはまだAI評価済みの候補者がいません。
+</div>
+{% endif %}
+
+<!-- 候補者詳細モーダル -->
+<div class="modal fade" id="candidateDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">候補者詳細</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="candidate-detail-content">
+                <!-- 動的に内容を挿入 -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 選択状態の管理
+let selectedCandidates = new Map();
+
+// 全選択チェックボックス
+document.getElementById('select-all').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.candidate-select');
+    checkboxes.forEach(checkbox => {
+        if (!checkbox.closest('tr').classList.contains('d-none')) {
+            checkbox.checked = this.checked;
+            checkbox.dispatchEvent(new Event('change'));
+        }
+    });
+});
+
+// 個別チェックボックス
+document.querySelectorAll('.candidate-select').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            selectedCandidates.set(this.value, JSON.parse(this.dataset.evaluation));
+        } else {
+            selectedCandidates.delete(this.value);
+        }
+        updateSelectedCount();
+    });
+});
+
+function updateSelectedCount() {
+    const count = selectedCandidates.size;
+    document.getElementById('selected-count').textContent = count;
+    document.querySelector('button[onclick="exportToSheets()"]').disabled = count === 0;
+    
+    // 全選択チェックボックスの状態を更新
+    const visibleCheckboxes = document.querySelectorAll('.candidate-row:not(.d-none) .candidate-select');
+    const checkedCount = document.querySelectorAll('.candidate-row:not(.d-none) .candidate-select:checked').length;
+    document.getElementById('select-all').checked = visibleCheckboxes.length > 0 && visibleCheckboxes.length === checkedCount;
+}
+
+// フィルタリング
+function filterByScore(level) {
+    const rows = document.querySelectorAll('.candidate-row');
+    
+    // ボタンのアクティブ状態を更新
+    document.querySelectorAll('.btn-group button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    rows.forEach(row => {
+        const score = row.dataset.score;
+        
+        if (level === 'all') {
+            row.classList.remove('d-none');
+        } else if (level === 'high') {
+            row.classList.toggle('d-none', score !== 'high');
+        } else if (level === 'medium') {
+            row.classList.toggle('d-none', score === 'low');
+        }
+    });
+    
+    updateSelectedCount();
+}
+
+// 送客リストに追加
+async function exportToSheets() {
+    if (selectedCandidates.size === 0) {
+        alert('候補者を選択してください');
+        return;
+    }
+    
+    if (!confirm(`${selectedCandidates.size}件の候補者を送客リストに追加しますか？`)) {
+        return;
+    }
+    
+    const candidateIds = Array.from(selectedCandidates.keys());
+    const button = document.querySelector('button[onclick="exportToSheets()"]');
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>処理中...';
+    
+    try {
+        const response = await fetch(`{{ base_path }}/candidates/job/{{ job.id }}/export-selected`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                selected_candidate_ids: candidateIds
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            
+            // 選択をクリア
+            selectedCandidates.clear();
+            document.querySelectorAll('.candidate-select:checked').forEach(cb => {
+                cb.checked = false;
+            });
+            updateSelectedCount();
+            
+            // TODO: Google Sheetsへの連携が完了したら、URLを開く処理を追加
+            // if (result.sheets_url) {
+            //     window.open(result.sheets_url, '_blank');
+            // }
+        } else {
+            alert('エラーが発生しました: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('エラーが発生しました');
+    } finally {
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-file-earmark-spreadsheet"></i> 送客リストに追加';
+    }
+}
+
+// 候補者詳細表示
+function showCandidateDetail(candidateId) {
+    const evaluation = evaluations.find(e => e.candidate_id === candidateId);
+    if (!evaluation) return;
+    
+    const content = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>基本情報</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="30%">候補者ID</th>
+                        <td>${evaluation.candidate.candidate_id}</td>
+                    </tr>
+                    <tr>
+                        <th>会社名</th>
+                        <td>${evaluation.candidate.candidate_company || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th>プラットフォーム</th>
+                        <td>${evaluation.candidate.platform}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>AI評価</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th width="30%">スコア</th>
+                        <td>${Math.round(evaluation.ai_score * 100)}%</td>
+                    </tr>
+                    <tr>
+                        <th>推奨度</th>
+                        <td><span class="badge bg-${evaluation.recommendation_color}">${evaluation.recommendation_text}</span></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <h6 class="mt-3">職務経歴（要約）</h6>
+        <div class="border p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
+            <pre style="white-space: pre-wrap;">${evaluation.candidate.candidate_resume || '情報なし'}</pre>
+        </div>
+        
+        <h6 class="mt-3">マッチ理由</h6>
+        <ul>
+            ${evaluation.match_reasons.map(reason => `<li>${reason}</li>`).join('')}
+        </ul>
+        
+        ${evaluation.concerns && evaluation.concerns.length > 0 ? `
+            <h6 class="mt-3 text-danger">懸念事項</h6>
+            <ul class="text-danger">
+                ${evaluation.concerns.map(concern => `<li>${concern}</li>`).join('')}
+            </ul>
+        ` : ''}
+    `;
+    
+    document.getElementById('candidate-detail-content').innerHTML = content;
+    new bootstrap.Modal(document.getElementById('candidateDetailModal')).show();
+}
+
+// データをグローバルに保持（詳細表示用）
+const evaluations = {{ evaluations | tojson }};
+</script>
+{% endblock %}

@@ -68,15 +68,13 @@
                 </div>
             </div>
             <div class="card-body">
-                <h5 class="card-title">{{ req.position_name }}</h5>
+                <h5 class="card-title">{{ req.title }}</h5>
                 <p class="card-text text-muted">
                     {{ req.description[:100] }}{% if req.description|length > 100 %}...{% endif %}
                 </p>
-                <ul class="list-unstyled small">
-                    <li><i class="bi bi-geo-alt"></i> {{ req.location or "リモート可" }}</li>
-                    <li><i class="bi bi-currency-yen"></i> {{ req.salary_range or "要相談" }}</li>
-                    <li><i class="bi bi-people"></i> 募集人数: {{ req.headcount or 1 }}名</li>
-                </ul>
+                <div class="small text-muted">
+                    <i class="bi bi-building"></i> {{ req.client_name }}
+                </div>
             </div>
             <div class="card-footer">
                 <div class="d-flex justify-content-between">
@@ -88,8 +86,8 @@
                             <i class="bi bi-eye"></i> 詳細
                         </a>
                         {% if req.status == "active" %}
-                        <a href="/user/search/new?requirement_id={{ req.id }}" class="btn btn-sm btn-success">
-                            <i class="bi bi-search"></i> 検索
+                        <a href="/user/jobs?requirement_id={{ req.id }}" class="btn btn-sm btn-success">
+                            <i class="bi bi-play-circle"></i> ジョブ実行
                         </a>
                         {% endif %}
                     </div>

@@ -1,8 +1,8 @@
-{% extends "common/_base.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}システム設定{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <h1 class="mb-4">システム設定</h1>
 
 <!-- 設定タブ -->
@@ -36,7 +36,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">一般設定</h5>
-                <form method="POST" action="/admin/settings/general">
+                <form method="POST" action="{{ base_path }}/settings/general">
                     <div class="mb-3">
                         <label for="system_name" class="form-label">システム名</label>
                         <input type="text" class="form-control" id="system_name" name="system_name" 
@@ -79,7 +79,7 @@
                     <i class="bi bi-exclamation-triangle"></i> 
                     APIキーは暗号化されて保存されます。変更する場合のみ入力してください。
                 </div>
-                <form method="POST" action="/admin/settings/api">
+                <form method="POST" action="{{ base_path }}/settings/api">
                     <div class="mb-3">
                         <label for="openai_api_key" class="form-label">OpenAI APIキー</label>
                         <input type="password" class="form-control" id="openai_api_key" 
@@ -111,7 +111,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">スクレイピング設定</h5>
-                <form method="POST" action="/admin/settings/scraping">
+                <form method="POST" action="{{ base_path }}/settings/scraping">
                     <div class="mb-3">
                         <label for="request_delay" class="form-label">リクエスト間隔（秒）</label>
                         <input type="number" class="form-control" id="request_delay" 
@@ -153,7 +153,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">通知設定</h5>
-                <form method="POST" action="/admin/settings/notification">
+                <form method="POST" action="{{ base_path }}/settings/notification">
                     <h6 class="mb-3">メール通知</h6>
                     <div class="mb-3">
                         <div class="form-check">

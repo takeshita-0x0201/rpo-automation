@@ -1,0 +1,112 @@
+{% extends "common/_base.html" %}
+
+{% block title %}新規採用要件作成{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">新規採用要件作成</h1>
+
+    <form method="POST" action="/user/requirements/new">
+        <div class="card">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="title" class="form-label">タイトル <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="title" name="title" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="client_id" class="form-label">クライアント <span class="text-danger">*</span></label>
+                    <select class="form-select" id="client_id" name="client_id" required>
+                        <option value="">選択してください</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="description" class="form-label">詳細説明 <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="description" name="description" rows="10" required 
+                              placeholder="採用要件の詳細を入力してください..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="structured_data" class="form-label">構造化データ (JSON)</label>
+                    <textarea class="form-control font-monospace" id="structured_data" name="structured_data" rows="10">{}</textarea>
+                    <div class="form-text">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="formatJSON()">
+                            <i class="bi bi-code"></i> JSONフォーマット
+                        </button>
+                        <button type="button" class="btn btn-sm btn-info" onclick="structureWithAI()">
+                            <i class="bi bi-robot"></i> AIで構造化
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                    <label class="form-check-label" for="is_active">
+                        有効にする
+                    </label>
+                </div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> 作成
+                </button>
+                <a href="/user/requirements" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> キャンセル
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function formatJSON() {
+    const textarea = document.getElementById('structured_data');
+    try {
+        const json = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(json, null, 2);
+    } catch (e) {
+        alert('JSONの形式が正しくありません: ' + e.message);
+    }
+}
+
+async function structureWithAI() {
+    const description = document.getElementById('description').value;
+    if (!description) {
+        alert('詳細説明を入力してください');
+        return;
+    }
+
+    if (!confirm('AIで採用要件を構造化しますか？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/requirements/structure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: description })
+        });
+
+        if (!response.ok) {
+            throw new Error('構造化に失敗しました');
+        }
+
+        const result = await response.json();
+        if (result.success) {
+            document.getElementById('structured_data').value = JSON.stringify(result.structured_data, null, 2);
+            alert('構造化が完了しました');
+        } else {
+            alert('構造化エラー: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

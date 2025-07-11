@@ -38,7 +38,7 @@ async def list_clients_page(request: Request, user: Optional[dict] = Depends(get
     try:
         # 非同期クライアントを関数内で初期化
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        response = await supabase_client.table('clients').select("*").order('created_at', desc=True).execute()
+        response = await supabase_client.table('clients').select("*").order('company_id').execute()
         if response.data:
             clients = response.data
     except Exception as e:
@@ -103,7 +103,7 @@ async def get_clients(user: Optional[dict] = Depends(get_current_user_from_cooki
         
     # 非同期クライアントを関数内で初期化
     supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    response = await supabase_client.table('clients').select("*").order('created_at', desc=True).execute()
+    response = await supabase_client.table('clients').select("*").order('company_id').execute()
     return {"clients": response.data}
 
 @router.get("/{client_id}/edit", response_class=HTMLResponse)

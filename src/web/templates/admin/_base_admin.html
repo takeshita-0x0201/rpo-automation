@@ -1,0 +1,7 @@
+{% extends "common/_base.html" %}
+
+{% set base_path = '/manager' if current_user.role == 'manager' else '/admin' %}
+
+{% block content %}
+{% block admin_content %}{% endblock %}
+{% endblock %}

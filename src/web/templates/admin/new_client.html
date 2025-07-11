@@ -1,14 +1,14 @@
 
-{% extends "common/_base.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}新規クライアント追加{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <h1 class="h2 mb-4">新規クライアント追加</h1>
 
 <div class="card">
     <div class="card-body">
-        <form action="/admin/clients/new" method="post">
+        <form action="{{ base_path }}/clients/new" method="post">
             <div class="mb-3">
                 <label for="name" class="form-label">企業名</label>
                 <input type="text" class="form-control" id="name" name="name" required>
@@ -20,7 +20,7 @@
                 </label>
             </div>
             <button type="submit" class="btn btn-primary">登録</button>
-            <a href="/admin/clients" class="btn btn-secondary">キャンセル</a>
+            <a href="{{ base_path }}/clients" class="btn btn-secondary">キャンセル</a>
         </form>
     </div>
 </div>

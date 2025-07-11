@@ -54,7 +54,9 @@
                 <div class="position-sticky pt-3">
                     {% if current_user and current_user.role == 'admin' %}
                         {% include 'admin/_sidebar_admin.html' %}
-                    {% elif current_user and current_user.role in ['user', 'operator', 'manager'] %}
+                    {% elif current_user and current_user.role == 'manager' %}
+                        {% include 'admin/_sidebar_manager.html' %}
+                    {% elif current_user and current_user.role in ['user', 'operator'] %}
                         {% include 'user/_sidebar_user.html' %}
                     {% else %}
                         <!-- デフォルトのサイドバー（もしあれば） -->

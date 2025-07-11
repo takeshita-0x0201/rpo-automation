@@ -52,7 +52,53 @@ async def list_requirements(
     skip: int = 0,
     limit: int = 100
 ):
-    return []
+    """採用要件一覧を取得"""
+    try:
+        from ...utils.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # クエリを構築
+        query = supabase.table('job_requirements').select('*')
+        
+        if client_id:
+            query = query.eq('client_id', client_id)
+        if is_active is not None:
+            query = query.eq('is_active', is_active)
+            
+        # 結果を取得
+        response = query.order('created_at', desc=True).range(skip, skip + limit - 1).execute()
+        
+        if response.data:
+            # レスポンス形式に変換
+            requirements = []
+            for req in response.data:
+                requirements.append(RequirementResponse(
+                    id=req['id'],
+                    client_id=req['client_id'],
+                    title=req['title'],
+                    description=req.get('description', ''),
+                    position=req.get('position', req['title']),  # positionがない場合はtitleを使用
+                    required_skills=req.get('structured_data', {}).get('required_skills', []) if req.get('structured_data') else [],
+                    preferred_skills=req.get('structured_data', {}).get('preferred_skills', []) if req.get('structured_data') else [],
+                    experience_years_min=req.get('structured_data', {}).get('experience_years_min', 0) if req.get('structured_data') else 0,
+                    experience_years_max=req.get('structured_data', {}).get('experience_years_max') if req.get('structured_data') else None,
+                    education_requirements=req.get('structured_data', {}).get('education_requirements') if req.get('structured_data') else None,
+                    salary_min=req.get('structured_data', {}).get('salary_min') if req.get('structured_data') else None,
+                    salary_max=req.get('structured_data', {}).get('salary_max') if req.get('structured_data') else None,
+                    location=req.get('structured_data', {}).get('location') if req.get('structured_data') else None,
+                    remote_work=req.get('structured_data', {}).get('remote_work', 'not_allowed') if req.get('structured_data') else 'not_allowed',
+                    benefits=req.get('structured_data', {}).get('benefits', []) if req.get('structured_data') else [],
+                    is_active=req.get('is_active', True),
+                    created_at=datetime.fromisoformat(req['created_at'].replace('Z', '+00:00')) if req.get('created_at') else datetime.now(),
+                    updated_at=datetime.fromisoformat(req['updated_at'].replace('Z', '+00:00')) if req.get('updated_at') else datetime.now()
+                ))
+            return requirements
+        else:
+            return []
+            
+    except Exception as e:
+        print(f"Error fetching requirements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{requirement_id}", response_model=RequirementResponse)
 async def get_requirement(requirement_id: str):

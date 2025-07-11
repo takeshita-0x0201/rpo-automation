@@ -1,0 +1,293 @@
+{% extends "common/_base.html" %}
+
+{% block title %}ジョブ実行{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>ジョブ実行</h1>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newJobModal">
+        <i class="bi bi-plus-circle"></i> 新規ジョブ作成
+    </button>
+</div>
+
+<!-- 実行中のジョブ -->
+{% if active_jobs %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-activity"></i> 実行中のジョブ</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ジョブID</th>
+                        <th>採用要件</th>
+                        <th>ステータス</th>
+                        <th>進捗</th>
+                        <th>開始時刻</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in active_jobs %}
+                    <tr>
+                        <td>{{ job.id[:8] }}...</td>
+                        <td>{{ job.requirement_title }}</td>
+                        <td>
+                            <span class="badge bg-{{ job.status_color }}">{{ job.status_display }}</span>
+                        </td>
+                        <td>
+                            <div class="progress" style="width: 100px;">
+                                <div class="progress-bar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
+                            </div>
+                        </td>
+                        <td>{{ job.started_at }}</td>
+                        <td>
+                            {% if job.status == 'running' %}
+                            <button class="btn btn-sm btn-warning" onclick="pauseJob('{{ job.id }}')">
+                                <i class="bi bi-pause"></i> 一時停止
+                            </button>
+                            {% elif job.status == 'paused' %}
+                            <button class="btn btn-sm btn-success" onclick="resumeJob('{{ job.id }}')">
+                                <i class="bi bi-play"></i> 再開
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-danger" onclick="stopJob('{{ job.id }}')">
+                                <i class="bi bi-stop"></i> 停止
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ジョブ履歴 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-clock-history"></i> ジョブ履歴</h5>
+    </div>
+    <div class="card-body">
+        {% if job_history %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ジョブID</th>
+                        <th>採用要件</th>
+                        <th>ステータス</th>
+                        <th>処理件数</th>
+                        <th>実行時間</th>
+                        <th>完了日時</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in job_history %}
+                    <tr>
+                        <td>{{ job.id[:8] }}...</td>
+                        <td>{{ job.requirement_title }}</td>
+                        <td>
+                            <span class="badge bg-{{ job.status_color }}">{{ job.status_display }}</span>
+                        </td>
+                        <td>{{ job.processed_count }}</td>
+                        <td>{{ job.duration }}</td>
+                        <td>{{ job.completed_at }}</td>
+                        <td>
+                            <a href="/user/jobs/{{ job.id }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> 詳細
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- ページネーション -->
+        {% if total_pages > 1 %}
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ current_page - 1 }}">前へ</a>
+                </li>
+                {% for page in range(1, total_pages + 1) %}
+                <li class="page-item {% if page == current_page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+                </li>
+                {% endfor %}
+                <li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ current_page + 1 }}">次へ</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="alert alert-info">
+            ジョブの実行履歴がありません。
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 新規ジョブ作成モーダル -->
+<div class="modal fade" id="newJobModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新規ジョブ作成</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newJobForm" method="POST" action="/api/jobs/create">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="requirementSelect" class="form-label">採用要件 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="requirementSelect" name="requirement_id" required>
+                            <option value="">選択してください</option>
+                            {% for req in active_requirements %}
+                            <option value="{{ req.id }}" {% if req.id == selected_requirement_id %}selected{% endif %}>
+                                {{ req.client_name }} - {{ req.title }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="jobTypeSelect" class="form-label">ジョブタイプ <span class="text-danger">*</span></label>
+                        <select class="form-select" id="jobTypeSelect" name="job_type" required>
+                            <option value="">選択してください</option>
+                            <option value="candidate_collection">候補者収集</option>
+                            <option value="ai_screening">AI選考</option>
+                            <option value="batch_processing">バッチ処理</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="prioritySelect" class="form-label">優先度</label>
+                        <select class="form-select" id="prioritySelect" name="priority">
+                            <option value="normal" selected>通常</option>
+                            <option value="high">高</option>
+                            <option value="low">低</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="scheduleType" class="form-label">実行タイミング</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="schedule_type" id="scheduleNow" value="now" checked>
+                                <label class="form-check-label" for="scheduleNow">今すぐ実行</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="schedule_type" id="scheduleDate" value="scheduled">
+                                <label class="form-check-label" for="scheduleDate">スケジュール実行</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3" id="scheduleDateTime" style="display: none;">
+                        <label for="scheduledAt" class="form-label">実行日時</label>
+                        <input type="datetime-local" class="form-control" id="scheduledAt" name="scheduled_at">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="jobDescription" class="form-label">備考</label>
+                        <textarea class="form-control" id="jobDescription" name="description" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                    <button type="submit" class="btn btn-primary">ジョブを作成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// スケジュールタイプの切り替え
+document.querySelectorAll('input[name="schedule_type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const scheduleDateTime = document.getElementById('scheduleDateTime');
+        if (this.value === 'scheduled') {
+            scheduleDateTime.style.display = 'block';
+            document.getElementById('scheduledAt').required = true;
+        } else {
+            scheduleDateTime.style.display = 'none';
+            document.getElementById('scheduledAt').required = false;
+        }
+    });
+});
+
+// ジョブ操作関数
+function pauseJob(jobId) {
+    if (confirm('このジョブを一時停止しますか？')) {
+        fetch(`/api/jobs/${jobId}/pause`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('エラーが発生しました: ' + data.error);
+                }
+            });
+    }
+}
+
+function resumeJob(jobId) {
+    if (confirm('このジョブを再開しますか？')) {
+        fetch(`/api/jobs/${jobId}/resume`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('エラーが発生しました: ' + data.error);
+                }
+            });
+    }
+}
+
+function stopJob(jobId) {
+    if (confirm('このジョブを停止しますか？この操作は取り消せません。')) {
+        fetch(`/api/jobs/${jobId}/stop`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('エラーが発生しました: ' + data.error);
+                }
+            });
+    }
+}
+
+// フォーム送信処理
+document.getElementById('newJobForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    fetch('/api/jobs/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('エラーが発生しました: ' + data.error);
+        }
+    });
+});
+</script>
+{% endblock %}

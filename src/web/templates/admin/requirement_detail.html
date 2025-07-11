@@ -1,8 +1,8 @@
-{% extends "shared/layout.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}採用要件詳細{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="container mt-4">
     <h1 class="mb-4">採用要件詳細</h1>
 
@@ -38,8 +38,8 @@
             <pre><code>{{ requirement.structured_data | tojson(indent=2) }}</code></pre>
         </div>
         <div class="card-footer">
-            <a href="/admin/requirements/{{ requirement.id }}/edit" class="btn btn-warning">編集</a>
-            <form action="/admin/requirements/{{ requirement.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('本当に削除しますか？');">
+            <a href="{{ base_path }}/requirements/{{ requirement.id }}/edit" class="btn btn-warning">編集</a>
+            <form action="{{ base_path }}/requirements/{{ requirement.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('本当に削除しますか？');">
                 <button type="submit" class="btn btn-danger">削除</button>
             </form>
             <a href="/admin/requirements" class="btn btn-secondary">一覧に戻る</a>

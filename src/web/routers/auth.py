@@ -101,6 +101,8 @@ async def login(response: Response, email: str = Form(...), password: str = Form
     # ロールに基づいてリダイレクト先を決定
     if result["role"] == "admin":
         redirect_url = "/admin"
+    elif result["role"] == "manager":
+        redirect_url = "/manager"
     else:
         redirect_url = "/user"
     
@@ -176,7 +178,14 @@ async def login_form(
     )
     
     # リダイレクト先を決定
-    redirect_url = f"/{result['role']}" if result['role'] in ['admin', 'user'] else "/"
+    if result['role'] == 'admin':
+        redirect_url = "/admin"
+    elif result['role'] == 'manager':
+        redirect_url = "/manager"
+    elif result['role'] == 'user':
+        redirect_url = "/user"
+    else:
+        redirect_url = "/"
     print(f"Redirecting to: {redirect_url}")
     
     # クッキーにトークンを設定

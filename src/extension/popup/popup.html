@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPO Automation</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- ヘッダー -->
+    <header class="header">
+      <h1 class="title">RPO Automation</h1>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text">未接続</span>
+      </div>
+    </header>
+
+    <!-- ログインフォーム -->
+    <div id="loginSection" class="section">
+      <h2 class="section-title">ログイン</h2>
+      <form id="loginForm" class="form">
+        <div class="form-group">
+          <label for="email">メールアドレス</label>
+          <input 
+            type="email" 
+            id="email" 
+            name="email" 
+            required 
+            placeholder="user@example.com"
+            class="form-input"
+          >
+        </div>
+        <div class="form-group">
+          <label for="password">パスワード</label>
+          <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            required 
+            placeholder="パスワード"
+            class="form-input"
+          >
+        </div>
+        <button type="submit" class="btn btn-primary">ログイン</button>
+      </form>
+    </div>
+
+    <!-- メインセクション（ログイン後に表示） -->
+    <div id="mainSection" class="section" style="display: none;">
+      <!-- ユーザー情報 -->
+      <div class="user-info">
+        <span class="user-name" id="userName">-</span>
+        <button id="logoutBtn" class="btn-link">ログアウト</button>
+      </div>
+
+      <!-- 媒体選択 -->
+      <div class="form-group">
+        <label for="platformSelect">媒体</label>
+        <select id="platformSelect" class="form-input">
+          <option value="">選択してください</option>
+          <option value="bizreach">BizReach</option>
+          <!-- 将来的に追加 -->
+          <!-- <option value="direct">Direct Recruiting</option> -->
+          <!-- <option value="green">Green</option> -->
+        </select>
+      </div>
+
+      <!-- 採用要件選択 -->
+      <div class="form-group" id="requirementGroup" style="display: none;">
+        <label for="requirementSelect">採用要件</label>
+        <select id="requirementSelect" class="form-input">
+          <option value="">選択してください</option>
+        </select>
+        <div class="requirement-details" id="requirementDetails" style="display: none;">
+          <div class="detail-item">
+            <span class="detail-label">クライアント:</span>
+            <span id="clientName" class="detail-value">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">ポジション:</span>
+            <span id="requirementPosition" class="detail-value">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">必須スキル:</span>
+            <span id="requirementSkills" class="detail-value">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- スクレイピング制御 -->
+      <div class="scraping-controls">
+        <h3 class="section-subtitle">候補者収集</h3>
+        
+        <!-- 状態表示 -->
+        <div class="scraping-status" id="scrapingStatus">
+          <div class="status-message">待機中</div>
+          <div class="progress-bar" style="display: none;">
+            <div class="progress-fill" style="width: 0%;"></div>
+          </div>
+          <div class="progress-text" style="display: none;">
+            <span id="progressCurrent">0</span> / <span id="progressTotal">0</span> 件
+          </div>
+        </div>
+
+        <!-- コントロールボタン -->
+        <div class="control-buttons">
+          <button id="startBtn" class="btn btn-success" disabled>
+            開始
+          </button>
+          <button id="pauseBtn" class="btn btn-warning" style="display: none;">
+            一時停止
+          </button>
+          <button id="resumeBtn" class="btn btn-info" style="display: none;">
+            再開
+          </button>
+          <button id="stopBtn" class="btn btn-danger" style="display: none;">
+            停止
+          </button>
+        </div>
+      </div>
+
+      <!-- 統計情報 -->
+      <div class="statistics" id="statistics" style="display: none;">
+        <h3 class="section-subtitle">収集結果</h3>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <div class="stat-label">総数</div>
+            <div class="stat-value" id="statTotal">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">成功</div>
+            <div class="stat-value success" id="statSuccess">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">エラー</div>
+            <div class="stat-value error" id="statError">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- エラーメッセージ -->
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+    <!-- フッター -->
+    <footer class="footer">
+      <a href="#" id="settingsLink" class="footer-link">設定</a>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

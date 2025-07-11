@@ -1,16 +1,48 @@
-{% extends "common/_base.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}ジョブ管理{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>ジョブ管理</h1>
     <div>
+        <a href="{{ base_path }}/jobs/new" class="btn btn-primary me-2">
+            <i class="bi bi-plus-circle"></i> 新規ジョブ作成
+        </a>
         <button class="btn btn-success" onclick="refreshJobs()">
             <i class="bi bi-arrow-clockwise"></i> 更新
         </button>
     </div>
 </div>
+
+{% if request.query_params.get('success') == 'created' %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <i class="bi bi-check-circle"></i> ジョブが正常に作成されました。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% elif request.query_params.get('success') == 'executed' %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <i class="bi bi-play-circle"></i> ジョブの実行を開始しました。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% elif request.query_params.get('success') == 'cancelled' %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-stop-circle"></i> ジョブを停止しました。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% elif request.query_params.get('success') == 'deleted' %}
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="bi bi-trash"></i> ジョブを削除しました。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
+{% if request.query_params.get('error') %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-circle"></i> エラーが発生しました。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
 
 <!-- ジョブ統計 -->
 <div class="row mb-4">
@@ -57,6 +89,7 @@
                 <th>ジョブID</th>
                 <th>タイプ</th>
                 <th>クライアント</th>
+                <th>対象数</th>
                 <th>ステータス</th>
                 <th>進捗</th>
                 <th>開始時刻</th>
@@ -68,7 +101,9 @@
             <tr>
                 <td><code>{{ job.id[:8] }}...</code></td>
                 <td>
-                    {% if job.job_type == "search" %}
+                    {% if job.job_type == "ai_matching" %}
+                        <i class="bi bi-cpu"></i> AIマッチング
+                    {% elif job.job_type == "search" %}
                         <i class="bi bi-search"></i> 検索
                     {% elif job.job_type == "scrape" %}
                         <i class="bi bi-download"></i> スクレイピング
@@ -77,6 +112,13 @@
                     {% endif %}
                 </td>
                 <td>{{ job.client_name or "-" }}</td>
+                <td>
+                    {% if job.candidate_count is defined %}
+                        <span class="badge bg-info">{{ job.candidate_count }}人</span>
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
                 <td>
                     {% if job.status == "running" %}
                         <span class="badge bg-primary">
@@ -106,13 +148,29 @@
                 <td>{{ job.started_at[:16] if job.started_at else "-" }}</td>
                 <td>
                     <div class="btn-group" role="group">
-                        <a href="/admin/jobs/{{ job.id }}/details" class="btn btn-sm btn-outline-info">
+                        <a href="{{ base_path }}/jobs/{{ job.id }}/details" class="btn btn-sm btn-outline-info">
                             <i class="bi bi-info-circle"></i> 詳細
                         </a>
-                        {% if job.status == "running" %}
+                        {% if job.status == "completed" and job.job_type == "ai_matching" %}
+                        <a href="{{ base_path }}/candidates/job/{{ job.id }}/candidates" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-people"></i> 候補者選択
+                        </a>
+                        {% endif %}
+                        {% if job.status == "pending" %}
+                        <button type="button" class="btn btn-sm btn-outline-success"
+                                onclick="executeJob('{{ job.id }}')">
+                            <i class="bi bi-play-circle"></i> 実行
+                        </button>
+                        {% elif job.status == "running" %}
                         <button type="button" class="btn btn-sm btn-outline-danger"
                                 onclick="cancelJob('{{ job.id }}')">
                             <i class="bi bi-stop-circle"></i> 停止
+                        </button>
+                        {% endif %}
+                        {% if job.status in ["completed", "failed", "pending"] %}
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="deleteJob('{{ job.id }}')">
+                            <i class="bi bi-trash"></i> 削除
                         </button>
                         {% endif %}
                     </div>
@@ -133,10 +191,94 @@ function refreshJobs() {
     location.reload();
 }
 
+function executeJob(jobId) {
+    if (confirm('このジョブを実行してもよろしいですか？')) {
+        // ボタンを無効化して二重実行を防ぐ
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => btn.disabled = true);
+        
+        fetch(`{{ base_path }}/jobs/${jobId}/execute`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // 成功時はアラート付きでリロード
+                window.location.href = `{{ base_path }}/jobs?success=executed`;
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの実行に失敗しました: ${data.error || '不明なエラー'}`);
+                    buttons.forEach(btn => btn.disabled = false);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの実行に失敗しました: ネットワークエラー');
+            buttons.forEach(btn => btn.disabled = false);
+        });
+    }
+}
+
 function cancelJob(jobId) {
     if (confirm('このジョブを停止してもよろしいですか？')) {
-        fetch(`/admin/jobs/${jobId}/cancel`, { method: 'POST' })
-            .then(() => location.reload());
+        // ボタンを無効化
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => btn.disabled = true);
+        
+        fetch(`{{ base_path }}/jobs/${jobId}/cancel`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = `{{ base_path }}/jobs?success=cancelled`;
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの停止に失敗しました: ${data.error || '不明なエラー'}`);
+                    buttons.forEach(btn => btn.disabled = false);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの停止に失敗しました: ネットワークエラー');
+            buttons.forEach(btn => btn.disabled = false);
+        });
+    }
+}
+
+function deleteJob(jobId) {
+    if (confirm('このジョブを削除してもよろしいですか？\n※この操作は取り消せません。')) {
+        // ボタンを無効化
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => btn.disabled = true);
+        
+        fetch(`{{ base_path }}/jobs/${jobId}/delete`, { 
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = `{{ base_path }}/jobs?success=deleted`;
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの削除に失敗しました: ${data.error || '不明なエラー'}`);
+                    buttons.forEach(btn => btn.disabled = false);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの削除に失敗しました: ネットワークエラー');
+            buttons.forEach(btn => btn.disabled = false);
+        });
     }
 }
 

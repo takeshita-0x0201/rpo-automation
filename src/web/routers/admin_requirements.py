@@ -52,7 +52,7 @@ async def requirements_list(request: Request, user=Depends(get_current_admin_use
         requirements = []
         print(f"Error fetching requirements in requirements_list: {e}")
 
-    return templates.TemplateResponse("requirements.html", {
+    return templates.TemplateResponse("admin/requirements.html", {
         "request": request,
         "current_user": user,
         "requirements": requirements,

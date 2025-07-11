@@ -1,12 +1,8 @@
 # データベース設計
 
-本システムは2つのデータベースサービスを使い分けることで、パフォーマンスとコストの最適化を実現します。
+本システムはSupabase (PostgreSQL互換) をメインデータベースとして使用し、全てのデータを統合管理します。WebAppのマスターデータ、トランザクションデータ、候補者データ、AIマッチング結果など、システム全体のデータをSupabaseで管理します。
 
-## 1. Supabase (PostgreSQL互換)
-
-**目的**: WebAppのマスターデータ、トランザクションデータ、およびリアルタイムな参照・更新が必要なデータを保存します。ユーザー管理、クライアント管理、採用要件のマスター、ジョブのステータス管理など、WebAppの機能に密接に関連するデータを扱います。
-
-### Supabaseテーブル詳細設計
+## Supabaseテーブル詳細設計
 
 #### profiles（ユーザープロファイル）
 | カラム名 | 型 | 制約 | 説明 |
@@ -156,123 +152,82 @@
 - **notification_settings**: 本人のみ閲覧・更新可能
 - **retry_queue**: adminのみ閲覧・更新可能
 
-## 2. BigQuery
+### 追加テーブル
 
-**目的**: 大規模データの蓄積と分析
+#### candidates（候補者データ）
+| カラム名 | 型 | 制約 | 説明 |
+|---|---|---|---|
+| id | UUID | PK | 候補者ID |
+| search_id | TEXT | | 検索セッションID |
+| session_id | TEXT | | スクレイピングセッションID |
+| name | TEXT | | 氏名 |
+| bizreach_id | TEXT | | BizreachID |
+| bizreach_url | TEXT | | BizreachプロフィールURL |
+| current_title | TEXT | | 現在の肩書き |
+| current_position | TEXT | | 現在の役職 |
+| current_company | TEXT | | 現在の会社 |
+| experience_years | INTEGER | | 経験年数 |
+| skills | TEXT[] | | スキル一覧 |
+| education | TEXT | | 学歴 |
+| profile_url | TEXT | | プロフィールURL |
+| profile_summary | TEXT | | プロフィール概要 |
+| scraped_at | TIMESTAMPTZ | NOT NULL | スクレイピング日時 |
+| scraped_by | TEXT | | スクレイピング実行者 |
+| platform | TEXT | DEFAULT 'bizreach' | プラットフォーム |
+| scraped_data | JSONB | | 追加データ（client_id, requirement_id等） |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
+| updated_at | TIMESTAMPTZ | DEFAULT NOW() | 更新日時 |
 
-### BigQueryテーブル詳細設計
+#### ai_evaluations（AI評価結果）
+| カラム名 | 型 | 制約 | 説明 |
+|---|---|---|---|
+| id | UUID | PK | 評価ID |
+| candidate_id | UUID | FK(candidates.id) | 候補者ID |
+| requirement_id | UUID | FK(job_requirements.id) | 要件ID |
+| search_id | TEXT | | 検索セッションID |
+| ai_score | FLOAT | | AIスコア（0-1） |
+| match_reasons | TEXT[] | | マッチ理由リスト |
+| concerns | TEXT[] | | 懸念事項リスト |
+| recommendation | TEXT | | 推薦レベル（high/medium/low） |
+| detailed_evaluation | JSONB | | 詳細評価データ |
+| evaluated_at | TIMESTAMPTZ | DEFAULT NOW() | 評価日時 |
+| model_version | TEXT | | 使用したAIモデルバージョン |
+| prompt_version | TEXT | | プロンプトバージョン |
 
-#### rpo_raw_data.raw_candidates（候補者生データ）
-| カラム名 | 型 | 説明 |
-|---------|----|----|  
-| scraped_at | TIMESTAMP | スクレイピング日時 |
-| session_id | STRING | スクレイピングセッションID |
-| client_id | STRING | クライアントID |
-| client_name | STRING | クライアント名 |
-| candidate_url | STRING | 候補者URL |
-| raw_html | STRING | HTML生データ |
-| raw_data | JSON | スクレイピングデータ |
-| scraped_by_user_id | STRING | スクレイピング実行者 |
+#### searches（検索セッション）
+| カラム名 | 型 | 制約 | 説明 |
+|---|---|---|---|
+| id | TEXT | PK | 検索ID |
+| requirement_id | UUID | FK(job_requirements.id) | 要件ID |
+| client_id | UUID | FK(clients.id) | クライアントID |
+| started_at | TIMESTAMPTZ | NOT NULL | 開始日時 |
+| completed_at | TIMESTAMPTZ | | 完了日時 |
+| status | TEXT | | ステータス（running/completed/failed） |
+| execution_mode | TEXT | | 実行モード（manual/scheduled） |
+| total_candidates | INTEGER | | 総候補者数 |
+| evaluated_candidates | INTEGER | | 評価済み候補者数 |
+| matched_candidates | INTEGER | | マッチした候補者数 |
+| error_message | TEXT | | エラーメッセージ |
+| search_params | JSONB | | 検索パラメータ |
+| created_by | UUID | FK(profiles.id) | 作成者 |
+| created_at | TIMESTAMPTZ | DEFAULT NOW() | 作成日時 |
 
-#### rpo_structured_data.structured_candidates（構造化済み候補者データ）
-| カラム名 | 型 | 説明 |
-|---------|----|----|  
-| candidate_id | STRING | 候補者ID |
-| original_url | STRING | 元URL |
-| client_id | STRING | クライアントID |
-| name | STRING | 氏名 |
-| current_company | STRING | 現在の会社 |
-| position | STRING | 現在のポジション |
-| skills | ARRAY<STRING> | スキル一覧 |
-| experience_years | INTEGER | 経験年数 |
-| education | STRING | 学歴 |
-| structured_at | TIMESTAMP | 構造化日時 |
-| structured_data | JSON | 全構造化データ |
-| structuring_model | STRING | 構造化に使用したモデル |
+## データフロー
 
-#### rpo_structured_data.job_requirements（採用要件スナップショット）
-| カラム名 | 型 | 説明 |
-|---------|----|----|
-| id | STRING | 要件ID（Supabaseのjob_requirements.idに対応） |
-| client_id | STRING | クライアントID |
-| title | STRING | 募集タイトル |
-| position | STRING | 職種 |
-| description | STRING | 詳細説明 |
-| required_skills | ARRAY<STRING> | 必須スキル |
-| preferred_skills | ARRAY<STRING> | 歓迎スキル |
-| experience_years | INTEGER | 必要経験年数 |
-| education_level | STRING | 学歴要件 |
-| salary_range | STRUCT | 給与レンジ |
-| work_location | STRING | 勤務地 |
-| employment_type | STRING | 雇用形態 |
-| original_text | STRING | 原本テキスト |
-| structured_data | JSON | 構造化データ |
-| created_at | TIMESTAMP | 作成日時 |
-| created_by | STRING | 作成者ID |
+### Phase 1: データ収集
+1. Chrome拡張機能からのデータはSupabaseのcandidatesテーブルに保存
+2. scraped_dataフィールドにclient_idやrequirement_idをJSON形式で格納
+3. 候補者の重複はbizreach_idをキーとして排除
 
-#### rpo_matching_results.matching_results（マッチング結果）
-| カラム名 | 型 | 説明 |
-|---------|----|----|
-| result_id | STRING | 結果ID |
-| job_id | STRING | マッチングジョブID（Supabaseのmatching_jobs.idに対応） |
-| candidate_id | STRING | 候補者ID |
-| client_id | STRING | クライアントID |
-| requirement_id | STRING | 要件ID |
-| match_score | FLOAT64 | マッチスコア（0-100） |
-| match_reasons | ARRAY<STRING> | マッチ理由 |
-| ai_evaluation | JSON | AI評価詳細 |
-| evaluated_at | TIMESTAMP | 評価日時 |
-| evaluation_model | STRING | 使用モデル |
-| model_version | STRING | モデルバージョン |
+### Phase 2: AI判定  
+1. Supabaseから候補者データを取得
+2. AI判定結果をai_evaluationsテーブルに保存
+3. 判定完了時にsearch_resultsに結果サマリーを保存
 
-### データパーティショニング戦略
-- **raw_candidates**: scraped_at で日付パーティション
-- **structured_candidates**: structured_at で日付パーティション
-- **matching_results**: evaluated_at で日付パーティション
-- 90日以上古いデータは自動的にコールドストレージへ
-
-## データベース連携
-
-- Chrome拡張機能からのデータはリアルタイムでBigQueryへ保存
-- Supabaseはシステム管理とユーザー認証に特化
+### データ整合性
 - クライアント企業のデータは`client_id`で管理
-
-## データフロー図
-
-```mermaid
-graph LR
-    subgraph "Chrome拡張機能"
-        A[スクレイピング]
-    end
-    
-    subgraph "FastAPI"
-        B[データ受信API]
-        C[データ検証]
-    end
-    
-    subgraph "BigQuery"
-        D[raw_candidates]
-        E[structured_candidates]
-        F[matching_results]
-    end
-    
-    subgraph "Supabase"
-        G[profiles]
-        H[clients]
-        I[job_requirements]
-        J[search_jobs]
-    end
-    
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    
-    B --> J
-    C --> I
-    F --> J
-```
+- 候補者の重複はbizreach_idをキーとして排除  
+- 全てのトランザクション処理はSupabaseで実行
 
 ## インデックス設計
 
@@ -302,43 +257,20 @@ CREATE INDEX idx_results_job ON search_results(search_job_id);
 CREATE INDEX idx_results_score ON search_results(match_score DESC);
 ```
 
-### BigQuery
-```sql
--- クラスタリング
-CREATE TABLE rpo_raw_data.raw_candidates
-PARTITION BY DATE(scraped_at)
-CLUSTER BY client_id, scraped_by_user_id;
-
-CREATE TABLE rpo_structured_data.structured_candidates  
-PARTITION BY DATE(structured_at)
-CLUSTER BY client_id, current_company;
-
-CREATE TABLE rpo_matching_results.matching_results
-PARTITION BY DATE(evaluated_at)
-CLUSTER BY client_id, match_score;
-```
-
 ## データ保持ポリシー
 
 ### Supabase
 - ユーザーデータ: 無期限保存
 - ジョブデータ: 1年間保存後アーカイブ
-- 通知設定: アクティブな間は保存
-
-### BigQuery
-- 生データ: 90日間ホットストレージ → コールドストレージ
-- 構造化データ: 1年間保持後、集計データのみ保存
-- マッチング結果: 2年間保持後、統計データのみ保存
+- 候補者データ: 180日間保存後自動削除（テーブル設定で管理）
+- AI評価結果: 1年間保存
 
 ## バックアップ戦略
 
 ### Supabase
 - 日次自動バックアップ（Supabase Pro以上）
 - 手動でのエクスポートスクリプト（週次）
-
-### BigQuery
-- データセットレベルでのスナップショット（日次）
-- 重要データの他リージョンへのレプリケーション
+- ポイントインタイムリカバリ: 7日間
 
 ## 監視とアラート
 
@@ -349,5 +281,8 @@ CLUSTER BY client_id, match_score;
 
 ### アラート設定
 - ストレージ使用率 > 80%
-- クエリ実行時間 > 30秒
+- クエリ実行時間 > 2秒
 - エラー率 > 5%
+
+### スケーリング戦略
+データ量が増加してパフォーマンス問題が発生した場合は、「[SupabaseからBigQueryへの移行ガイド](../bigquery_archive/supabase-to-bigquery-migration.md)」を参照してください。

@@ -1,8 +1,8 @@
-{% extends "shared/layout.html" %}
+{% extends "admin/_base_admin.html" %}
 
 {% block title %}新規採用要件の登録{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="container mt-4">
     <h1 class="mb-4">新規採用要件の登録</h1>
 
@@ -18,7 +18,7 @@
 
     <div class="card">
         <div class="card-body">
-            <form action="/admin/requirements/create" method="post">
+            <form action="{{ base_path }}/requirements/create" method="post">
                 <div class="mb-3">
                     <label for="client_id" class="form-label">クライアント企業</label>
                     <select class="form-select" id="client_id" name="client_id" required>
@@ -44,7 +44,7 @@
                     <textarea class="form-control" id="structured_data" name="structured_data" rows="15"></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">登録</button>
-                <a href="/admin/requirements" class="btn btn-link">キャンセル</a>
+                <a href="{{ base_path }}/requirements" class="btn btn-link">キャンセル</a>
             </form>
         </div>
     </div>
