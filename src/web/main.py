@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 # ルーターのインポート
-from src.web.routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates
+from src.web.routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -60,6 +60,8 @@ app.include_router(manager_clients.router, prefix="/manager/clients", tags=["man
 app.include_router(manager_requirements.router, tags=["manager_requirements"])
 # 候補者管理ルーター
 app.include_router(candidates.router, prefix="/candidates", tags=["candidates"])
+# 求人票管理ルーター
+app.include_router(job_postings.router, tags=["job_postings"])
 
 from src.web.routers.auth import get_current_user_from_cookie
 

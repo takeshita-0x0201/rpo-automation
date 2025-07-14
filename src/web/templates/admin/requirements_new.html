@@ -29,6 +29,16 @@
                     </select>
                 </div>
                 <div class="mb-3">
+                    <label for="job_posting_id" class="form-label">求人票</label>
+                    <select class="form-select" id="job_posting_id" name="job_posting_id" onchange="loadJobPosting()">
+                        <option value="" selected>選択してください（任意）</option>
+                        {% for posting in job_postings %}
+                        <option value="{{ posting.id }}">{{ posting.id }} - {{ posting.position }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">求人票を選択すると、内容が自動的に読み込まれます</div>
+                </div>
+                <div class="mb-3">
                     <label for="title" class="form-label">要件タイトル</label>
                     <input type="text" class="form-control" id="title" name="title" required>
                 </div>
@@ -92,5 +102,31 @@ document.getElementById('structure-btn').addEventListener('click', async () => {
         structureBtn.innerHTML = 'AIで構造化';
     }
 });
+// 求人票選択時の処理
+function loadJobPosting() {
+    const select = document.getElementById('job_posting_id');
+    const selectedId = select.value;
+    
+    if (!selectedId) {
+        return;
+    }
+    
+    // 選択された求人票の情報を取得（実際の実装ではAPIから取得）
+    const selectedOption = select.options[select.selectedIndex];
+    const position = selectedOption.text.split(' - ')[1];
+    
+    // タイトルに反映
+    const titleField = document.getElementById('title');
+    if (!titleField.value || confirm('タイトルを「' + position + '」に変更しますか？')) {
+        titleField.value = position;
+    }
+    
+    // 求人票の内容を取得するAPIを呼ぶこともできる
+    // fetch(`/api/job-postings/${selectedId}`)
+    //     .then(response => response.json())
+    //     .then(data => {
+    //         // 必要に応じて requirement_text に反映
+    //     });
+}
 </script>
 {% endblock %}

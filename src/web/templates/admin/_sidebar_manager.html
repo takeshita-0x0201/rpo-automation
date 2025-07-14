@@ -10,6 +10,11 @@
         </a>
     </li>
     <li class="nav-item">
+        <a class="nav-link {% if '/manager/job-postings' in request.url.path %}active{% endif %}" href="/manager/job-postings">
+            <i class="bi bi-file-text"></i> 求人票管理
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link {% if '/manager/requirements' in request.url.path %}active{% endif %}" href="/manager/requirements">
             <i class="bi bi-clipboard-check"></i> 採用要件管理
         </a>

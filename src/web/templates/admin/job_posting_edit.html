@@ -1,0 +1,111 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}求人票編集 - {{ posting.id }}{% endblock %}
+
+{% block admin_content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ base_path }}/job-postings">求人票管理</a></li>
+            <li class="breadcrumb-item"><a href="{{ base_path }}/job-postings/{{ posting.id }}/view">{{ posting.id }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">編集</li>
+        </ol>
+    </nav>
+
+    <h1 class="mb-4">求人票編集: {{ posting.id }}</h1>
+
+    {% if request.query_params.error == 'update_failed' %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        求人票の更新に失敗しました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form action="{{ base_path }}/job-postings/{{ posting.id }}/update" method="post" id="job-posting-form">
+                <div class="alert alert-info mb-4">
+                    <i class="bi bi-info-circle"></i> 求人票ID: <strong>{{ posting.id }}</strong> （変更不可）
+                </div>
+                
+                <div class="mb-4">
+                    <label for="position" class="form-label required">ポジション名</label>
+                    <input type="text" class="form-control" id="position" name="position" 
+                           value="{{ posting.position }}" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="job_description" class="form-label required">求人票</label>
+                    <textarea class="form-control" id="job_description" name="job_description" 
+                              rows="20" required>{{ posting.job_description }}</textarea>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="memo" class="form-label">求人メモ（補足情報）</label>
+                    <textarea class="form-control" id="memo" name="memo" rows="10">{{ posting.memo if posting.memo else '' }}</textarea>
+                </div>
+                
+                <hr class="my-4">
+                
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> 更新
+                        </button>
+                        <a href="{{ base_path }}/job-postings/{{ posting.id }}/view" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> キャンセル
+                        </a>
+                    </div>
+                    <div class="text-muted">
+                        <small>最終更新: {{ posting.updated_at if posting.updated_at else '未更新' }}</small>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.required::after {
+    content: " *";
+    color: red;
+}
+</style>
+
+<script>
+// フォーム送信前の確認
+document.getElementById('job-posting-form').addEventListener('submit', function(e) {
+    const position = document.getElementById('position').value.trim();
+    const jobDescription = document.getElementById('job_description').value.trim();
+    
+    if (!position || !jobDescription) {
+        e.preventDefault();
+        alert('ポジション名と求人票は必須項目です。');
+        return false;
+    }
+});
+
+// テキストエリアの自動リサイズ
+function autoResize(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+// ページ読み込み時にテキストエリアのサイズを調整
+window.addEventListener('load', function() {
+    autoResize(document.getElementById('job_description'));
+    const memoField = document.getElementById('memo');
+    if (memoField.value) {
+        autoResize(memoField);
+    }
+});
+
+document.getElementById('job_description').addEventListener('input', function() {
+    autoResize(this);
+});
+
+document.getElementById('memo').addEventListener('input', function() {
+    autoResize(this);
+});
+</script>
+{% endblock %}

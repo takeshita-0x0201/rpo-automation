@@ -64,17 +64,25 @@ async def requirements_list(request: Request, user=Depends(get_current_manager_u
 async def requirements_new(request: Request, user=Depends(get_current_manager_user), db=Depends(get_db)):
     """新規採用要件作成ページ"""
     try:
+        # クライアント一覧を取得
         clients_response = db.table('clients').select('id, name').eq('is_active', True).execute()
         print(f"Supabase clients_response: {clients_response}")
         clients = clients_response.data
+        
+        # 求人票一覧を取得
+        postings_response = db.table('job_postings').select('id, position').order('created_at', desc=True).execute()
+        job_postings = postings_response.data if postings_response.data else []
+        
     except Exception as e:
         clients = []
-        print(f"Error fetching clients in requirements_new: {e}")
+        job_postings = []
+        print(f"Error fetching data in requirements_new: {e}")
 
     return templates.TemplateResponse("admin/requirements_new.html", {
         "request": request,
         "current_user": user,
         "clients": clients,
+        "job_postings": job_postings,
         "page": "requirements"
     })
 
@@ -82,6 +90,7 @@ async def requirements_new(request: Request, user=Depends(get_current_manager_us
 async def create_requirement(
     request: Request,
     client_id: str = Form(...),
+    job_posting_id: Optional[str] = Form(None),
     title: str = Form(...),
     requirement_text: str = Form(...),
     structured_data: str = Form(...),
@@ -100,6 +109,7 @@ async def create_requirement(
 
         new_requirement = {
             "client_id": client_id,
+            "job_posting_id": job_posting_id if job_posting_id else None,
             "title": title,
             "description": requirement_text,
             "structured_data": parsed_structured_data,
