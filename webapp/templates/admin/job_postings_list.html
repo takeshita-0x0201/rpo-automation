@@ -1,0 +1,105 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}求人票管理{% endblock %}
+
+{% block admin_content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>求人票管理</h1>
+        <a href="{{ base_path }}/job-postings/new" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> 新規求人票を登録
+        </a>
+    </div>
+
+    {% if request.query_params.success == 'deleted' %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        求人票を削除しました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    {% if request.query_params.error == 'delete_failed' %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        求人票の削除に失敗しました。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            {% if job_postings %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>クライアント</th>
+                            <th>ポジション</th>
+                            <th>関連要件数</th>
+                            <th>作成日</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for posting in job_postings %}
+                        <tr>
+                            <td>
+                                <a href="{{ base_path }}/job-postings/{{ posting.id }}/view" class="text-decoration-none">
+                                    {{ posting.id }}
+                                </a>
+                            </td>
+                            <td>{{ posting.clients.name if posting.clients else 'N/A' }}</td>
+                            <td>{{ posting.position }}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ posting.requirement_count }}件</span>
+                            </td>
+                            <td>{{ posting.created_at[:10] if posting.created_at else 'N/A' }}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{{ base_path }}/job-postings/{{ posting.id }}/view" 
+                                       class="btn btn-outline-primary" title="詳細">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{{ base_path }}/job-postings/{{ posting.id }}/edit" 
+                                       class="btn btn-outline-secondary" title="編集">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{{ base_path }}/requirements/new?job_posting_id={{ posting.id }}" 
+                                       class="btn btn-outline-success" title="この求人票で要件作成">
+                                        <i class="bi bi-plus"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-inbox display-1 text-muted"></i>
+                <p class="mt-3 text-muted">求人票がまだ登録されていません</p>
+                <a href="{{ base_path }}/job-postings/new" class="btn btn-primary mt-3">
+                    <i class="bi bi-plus-circle"></i> 最初の求人票を登録
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <div class="alert alert-info">
+            <h5 class="alert-heading"><i class="bi bi-info-circle"></i> 求人票管理について</h5>
+            <p class="mb-0">
+                求人票は採用要件の基本となる情報です。一つの求人票から複数の採用要件を作成できます。
+            </p>
+            <hr>
+            <ul class="mb-0">
+                <li>求人票ID（req-001形式）は自動的に割り当てられます</li>
+                <li>ポジション名、求人内容、補足メモを管理できます</li>
+                <li>作成した求人票は採用要件作成時に選択できます</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

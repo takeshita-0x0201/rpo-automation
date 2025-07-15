@@ -1,0 +1,168 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}新規採用要件の登録{% endblock %}
+
+{% block admin_content %}
+<div class="container mt-4">
+    <h1 class="mb-4">新規採用要件の登録</h1>
+
+    {% if request.query_params.error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {% if request.query_params.error == 'creation_failed' %}
+        採用要件の作成に失敗しました。
+        {% elif request.query_params.error == 'validation_failed' %}
+        入力内容に問題があります。
+        {% elif request.query_params.error == 'invalid_json' %}
+        構造化データの形式が正しくありません。
+        {% endif %}
+        {% if request.query_params.message %}
+        <br><strong>詳細:</strong> {{ request.query_params.message }}
+        {% endif %}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form action="{{ base_path }}/requirements/create" method="post" id="requirements-form">
+                <div class="mb-3">
+                    <label for="client_id" class="form-label">クライアント企業</label>
+                    <select class="form-select" id="client_id" name="client_id" required>
+                        <option value="" disabled {% if not selected_client_id %}selected{% endif %}>選択してください</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}" {% if selected_client_id == client.id %}selected{% endif %}>{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="position" class="form-label">ポジション</label>
+                    <input type="text" class="form-control" id="position" name="position" placeholder="例: Treasury Specialist / トレジャリースペシャリスト" required>
+                </div>
+                <div class="mb-3">
+                    <label for="job_description" class="form-label">求人票</label>
+                    <textarea class="form-control" id="job_description" name="job_description" rows="10" placeholder="クライアントから受け取った求人票をそのまま貼り付けてください..."></textarea>
+                    <div class="form-text">求人票の内容をテキストで入力してください</div>
+                </div>
+                <div class="mb-3">
+                    <label for="requirement_memo" class="form-label">求人メモ</label>
+                    <textarea class="form-control" id="requirement_memo" name="requirement_memo" rows="10" placeholder="募集要件、ターゲット候補者、年収レンジ、選考のポイントなど..."></textarea>
+                </div>
+                <!-- 構造化部分は一時的に非表示 -->
+                <div class="mb-3" style="display: none;">
+                    <button type="button" id="structure-btn" class="btn btn-secondary">AIで構造化</button>
+                </div>
+                <div class="mb-3" style="display: none;">
+                    <label for="structured_data" class="form-label">構造化データ (JSON)</label>
+                    <textarea class="form-control" id="structured_data" name="structured_data" rows="15">{}</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">登録</button>
+                <a href="{{ base_path }}/requirements" class="btn btn-link">キャンセル</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// フォーム送信時のログ
+document.getElementById('requirements-form').addEventListener('submit', function(e) {
+    console.log('=== フォーム送信開始 ===');
+    
+    // フォームデータを取得してログ出力
+    const formData = new FormData(this);
+    console.log('送信データ:');
+    for (let [key, value] of formData.entries()) {
+        if (value.length > 100) {
+            console.log(`${key}: ${value.substring(0, 100)}... (${value.length}文字)`);
+        } else {
+            console.log(`${key}: ${value}`);
+        }
+    }
+    
+    console.log('=== 送信処理実行中 ===');
+});
+
+document.getElementById('structure-btn').addEventListener('click', async () => {
+    console.log('構造化ボタンクリック');
+    const text = document.getElementById('job_description').value;
+    console.log('求人票の長さ:', text.length);
+    
+    if (!text) {
+        console.warn('求人票が空です');
+        alert('求人票を入力してください。');
+        return;
+    }
+
+    const structureBtn = document.getElementById('structure-btn');
+    const structuredDataField = document.getElementById('structured_data');
+    console.log('構造化処理開始');
+
+    // ローディング表示開始
+    structureBtn.disabled = true;
+    structureBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 構造化中...';
+    structuredDataField.value = '構造化中です。しばらくお待ちください...';
+
+    try {
+        console.log('API呼び出し開始: /api/requirements/structure');
+        const response = await fetch('/api/requirements/structure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: text })
+        });
+        
+        console.log('APIレスポンスステータス:', response.status);
+        const result = await response.json();
+        console.log('APIレスポンス内容:', result);
+
+        if (result.success) {
+            console.log('構造化成功');
+            structuredDataField.value = JSON.stringify(result.structured_data, null, 2);
+        } else {
+            console.error('構造化失敗:', result.error);
+            alert('構造化に失敗しました: ' + result.error);
+            structuredDataField.value = '構造化に失敗しました。エラー: ' + result.error;
+        }
+    } catch (error) {
+        console.error('通信エラー:', error);
+        alert('通信エラーが発生しました: ' + error.message);
+        structuredDataField.value = '通信エラーが発生しました。エラー: ' + error.message;
+    } finally {
+        // ローディング表示終了
+        console.log('構造化処理完了');
+        structureBtn.disabled = false;
+        structureBtn.innerHTML = 'AIで構造化';
+    }
+});
+// 不要な求人票関連のコードを削除
+
+// ページ読み込み時のログ
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== 採用要件登録ページ読み込み完了 ===');
+    console.log('フォーム要素の確認:');
+    console.log('- client_id:', document.getElementById('client_id') ? '存在' : '不在');
+    console.log('- position:', document.getElementById('position') ? '存在' : '不在');
+    console.log('- job_description:', document.getElementById('job_description') ? '存在' : '不在');
+    console.log('- requirement_memo:', document.getElementById('requirement_memo') ? '存在' : '不在');
+    console.log('- structured_data:', document.getElementById('structured_data') ? '存在' : '不在');
+    
+    // 各フィールドの変更をログ
+    ['client_id', 'position', 'job_description', 'requirement_memo'].forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('change', function() {
+                console.log(`${fieldId} 変更:`, this.value.substring(0, 50) + (this.value.length > 50 ? '...' : ''));
+            });
+        }
+    });
+});
+
+// エラーメッセージの確認
+{% if request.query_params.error %}
+console.error('エラーパラメータ:', '{{ request.query_params.error }}');
+{% if request.query_params.message %}
+console.error('エラーメッセージ:', '{{ request.query_params.message }}');
+{% endif %}
+{% endif %}
+</script>
+{% endblock %}
