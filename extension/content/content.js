@@ -30,7 +30,7 @@ async function initialize() {
       await scraper.initialize();
       console.log('BizReach scraper initialized');
     }
-  } else if (currentDomain.includes('vorkers.com') || currentDomain.includes('openwork')) {
+  } else if (currentDomain.includes('vorkers.com') || currentDomain.includes('openwork.jp') || currentDomain.includes('openwork')) {
     // window経由でも試す
     const ScraperClass = window.OpenWorkScraper || OpenWorkScraper;
     if (typeof ScraperClass !== 'undefined') {

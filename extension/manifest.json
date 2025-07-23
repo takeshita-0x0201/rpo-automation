@@ -14,6 +14,8 @@
     "https://*.bizreach.jp/*",
     "https://*.recruiting.vorkers.com/*",
     "https://*.vorkers.com/*",
+    "https://*.openwork.jp/*",
+    "https://recruiting.openwork.jp/*",
     "http://localhost:8000/*",
     "https://*.run.app/*"
   ],
@@ -30,6 +32,8 @@
         "https://*.directrecruiting.jp/*",
         "https://*.green-japan.com/*",
         "https://*.recruiting.vorkers.com/*",
+        "https://*.openwork.jp/*",
+        "https://recruiting.openwork.jp/*",
         "https://*.example.com/*"
       ],
       "js": [
@@ -58,7 +62,9 @@
       "https://*.cr-support.jp/*",
       "https://*.directrecruiting.jp/*",
       "https://*.green-japan.com/*",
-      "https://*.recruiting.vorkers.com/*"
+      "https://*.recruiting.vorkers.com/*",
+      "https://*.openwork.jp/*",
+      "https://recruiting.openwork.jp/*"
     ]
   }],
   
