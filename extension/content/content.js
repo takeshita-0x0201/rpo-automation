@@ -11,15 +11,21 @@ async function initialize() {
   const currentDomain = window.location.hostname;
   
   // サイト別にスクレイパーを初期化
+  console.log('Current domain:', currentDomain);
+  
   if (currentDomain.includes('cr-support.jp') || currentDomain.includes('bizreach')) {
     if (typeof BizReachScraper !== 'undefined') {
       scraper = new BizReachScraper();
       await scraper.initialize();
+      console.log('BizReach scraper initialized');
     }
-  } else if (currentDomain.includes('recruiting.vorkers.com') || currentDomain.includes('openwork')) {
+  } else if (currentDomain.includes('vorkers.com') || currentDomain.includes('openwork')) {
     if (typeof OpenWorkScraper !== 'undefined') {
       scraper = new OpenWorkScraper();
       await scraper.initialize();
+      console.log('OpenWork scraper initialized');
+    } else {
+      console.error('OpenWorkScraper is not defined');
     }
   } else if (currentDomain.includes('example.com')) {
     // 新しいサイトのスクレイパー

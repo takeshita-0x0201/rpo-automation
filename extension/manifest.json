@@ -12,6 +12,8 @@
   
   "host_permissions": [
     "https://*.bizreach.jp/*",
+    "https://*.recruiting.vorkers.com/*",
+    "https://*.vorkers.com/*",
     "http://localhost:8000/*",
     "https://*.run.app/*"
   ],
