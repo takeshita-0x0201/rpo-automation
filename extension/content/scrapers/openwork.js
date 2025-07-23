@@ -63,6 +63,13 @@ class OpenWorkScraper {
   async scrapeCurrentBatch() {
     console.log('Scraping current batch...');
     
+    // 最初の処理前にもランダムな待機（1-3秒）
+    if (this.stats.processed === 0) {
+      const initialDelay = Math.floor(Math.random() * 2001) + 1000; // 1000-3000ms
+      console.log(`Initial wait: ${initialDelay/1000} seconds before first scraping...`);
+      await this.wait(initialDelay);
+    }
+    
     // ドロワー要素を確認
     const drawer = document.querySelector('#testDrawer');
     if (!drawer) {
@@ -175,7 +182,11 @@ class OpenWorkScraper {
       console.log('Checking scrape_resume flag:', this.sessionData.scrape_resume);
       if (this.sessionData.scrape_resume) {
         console.log('Attempting to fetch resume from:', data.candidate_link);
-        await this.wait(1000); // レート制限対策
+        
+        // レート制限対策（2-4秒のランダム待機）
+        const resumeDelay = Math.floor(Math.random() * 2001) + 2000; // 2000-4000ms
+        console.log(`Waiting ${resumeDelay/1000} seconds before fetching resume...`);
+        await this.wait(resumeDelay);
         
         // レジュメページを開く
         const resumeResponse = await fetch(data.candidate_link, {
@@ -412,8 +423,12 @@ class OpenWorkScraper {
         const currentCandidateId = this.getCurrentCandidateId();
         console.log('Current candidate ID:', currentCandidateId);
         
-        // クリック前に待機
-        await this.wait(this.sessionData.scraping_delay || 2000);
+        // クリック前に待機（5-10秒のランダム）
+        const minDelay = 5000; // 5秒
+        const maxDelay = 10000; // 10秒
+        const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        console.log(`Waiting ${randomDelay/1000} seconds before clicking next button...`);
+        await this.wait(randomDelay);
         
         // 次の候補者へ
         nextButton.click();
@@ -610,5 +625,162 @@ console.log('openwork.js loading...');
 // グローバルに公開（Chrome拡張機能のcontent script内）
 window.OpenWorkScraper = OpenWorkScraper;
 
+// テスト用のヘルパー関数をグローバルに公開
+window.testOpenWork = {
+  // スクレイパーインスタンスを作成
+  createScraper: function() {
+    const scraper = new OpenWorkScraper();
+    console.log('OpenWorkScraper instance created:', scraper);
+    return scraper;
+  },
+  
+  // 現在のページの候補者データを取得（レジュメなし）
+  extractCurrentCandidate: async function() {
+    const scraper = new OpenWorkScraper();
+    scraper.sessionData = {
+      clientId: 'test-client-id',
+      requirementId: 'test-requirement-id',
+      sessionId: 'test-session-id',
+      scrape_resume: false
+    };
+    
+    try {
+      const data = await scraper.extractCandidateData();
+      console.log('Extracted candidate data:', data);
+      return data;
+    } catch (error) {
+      console.error('Error extracting candidate:', error);
+      return null;
+    }
+  },
+  
+  // レジュメを含む完全な候補者データを取得
+  extractWithResume: async function() {
+    const scraper = new OpenWorkScraper();
+    scraper.sessionData = {
+      clientId: 'test-client-id',
+      requirementId: 'test-requirement-id',
+      sessionId: 'test-session-id',
+      scrape_resume: true
+    };
+    
+    try {
+      const data = await scraper.extractCandidateData();
+      console.log('Extracted candidate data with resume:', data);
+      return data;
+    } catch (error) {
+      console.error('Error extracting candidate with resume:', error);
+      return null;
+    }
+  },
+  
+  // 次へボタンを探す
+  findNextButton: function() {
+    const scraper = new OpenWorkScraper();
+    
+    // XPathで探す
+    console.log('Searching for next button...');
+    let button = scraper.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/ul/li[2]/a');
+    if (button) {
+      console.log('Found with XPath:', button);
+      return button;
+    }
+    
+    // CSSセレクタで探す
+    const selectors = [
+      'a.button.button-white',
+      '#testDrawer a.button-white',
+      '#testDrawer ul li:nth-child(2) a'
+    ];
+    
+    for (const selector of selectors) {
+      button = document.querySelector(selector);
+      if (button) {
+        console.log(`Found with CSS selector: ${selector}`, button);
+        return button;
+      }
+    }
+    
+    // テキストで探す
+    const buttons = document.querySelectorAll('a.button');
+    for (const btn of buttons) {
+      if (btn.textContent.includes('次の候補者')) {
+        console.log('Found by text content:', btn);
+        return btn;
+      }
+    }
+    
+    console.log('Next button not found');
+    return null;
+  },
+  
+  // スクレイピング処理を開始（ランダムインターバル付き）
+  startScrapingWithInterval: async function(pageLimit = 3) {
+    console.log(`Starting scraping with random 5-10s interval, limit: ${pageLimit} pages`);
+    
+    const scraper = new OpenWorkScraper();
+    scraper.sessionData = {
+      clientId: 'test-client-id',
+      requirementId: 'test-requirement-id',
+      sessionId: 'test-session-id',
+      scrape_resume: true,
+      pageLimit: pageLimit,
+      scraping_delay: 7000, // この値は使用されません（ランダムを使用）
+      auto_pagination: true
+    };
+    
+    scraper.isActive = true;
+    scraper.stats = { processed: 0, success: 0, error: 0, skipped: 0 };
+    
+    // 処理をシミュレート
+    for (let i = 0; i < pageLimit; i++) {
+      console.log(`\n--- Processing page ${i + 1}/${pageLimit} ---`);
+      
+      try {
+        // 候補者データを取得
+        const data = await scraper.extractCandidateData();
+        if (data) {
+          console.log('Candidate extracted:', data.candidate_id);
+          scraper.stats.processed++;
+          scraper.stats.success++;
+        }
+        
+        // 次のページへ移動する前に待機
+        if (i < pageLimit - 1) {
+          const randomInterval = Math.floor(Math.random() * 5001) + 5000; // 5000-10000ms
+          console.log(`Waiting ${randomInterval/1000} seconds before next page...`);
+          await new Promise(resolve => setTimeout(resolve, randomInterval));
+          
+          // 次へボタンをクリック
+          const nextButton = this.findNextButton();
+          if (nextButton && !nextButton.disabled) {
+            console.log('Clicking next button...');
+            nextButton.click();
+            
+            // ページの更新を待つ
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            console.log('Next button not found or disabled');
+            break;
+          }
+        }
+      } catch (error) {
+        console.error('Error in scraping loop:', error);
+        scraper.stats.error++;
+      }
+    }
+    
+    console.log('\n--- Scraping completed ---');
+    console.log('Stats:', scraper.stats);
+    return scraper.stats;
+  }
+};
+
 // 読み込み確認
 console.log('OpenWorkScraper loaded successfully');
+console.log('Test functions available:');
+console.log('- window.testOpenWork.createScraper()');
+console.log('- window.testOpenWork.extractCurrentCandidate()');
+console.log('- window.testOpenWork.extractWithResume()');
+console.log('- window.testOpenWork.findNextButton()');
+console.log('- window.testOpenWork.startScrapingWithInterval(pageLimit) // 5-10秒のランダムインターバル');
