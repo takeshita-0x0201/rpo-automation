@@ -191,58 +191,50 @@ class OpenWorkScraper {
           const parser = new DOMParser();
           const resumeDoc = parser.parseFromString(resumeHtml, 'text/html');
           
-          // 複数のセレクタを試す（提供されたXPathを優先）
-          const selectors = [
-            '#jsContainerContents > section > div > div:first-child',
-            '#jsContainerContents > section > div > div:first-child > table:first-child > tbody',
-            '#jsContainerContents section div div:first-child',
-            '#jsContainerContents section div div:first-child table tbody',
-            '#jsContainerContents'
+          // 複数の要素を取得して結合
+          const resumeParts = [];
+          
+          // 取得する要素のXPathリスト
+          const xpathsToExtract = [
+            '//*[@id="jsContainerContents"]/section/div/div[1]/table[1]',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/table[2]',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/h3',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/div[1]',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/div[2]',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/div[3]',
+            '//*[@id="jsContainerContents"]/section/div/div[1]/div[4]'
           ];
           
-          let resumeElement = null;
-          
-          // まずCSSセレクタで試す
-          for (const selector of selectors) {
-            resumeElement = resumeDoc.querySelector(selector);
-            if (resumeElement) {
-              console.log(`Resume found with CSS selector: ${selector}`);
-              break;
-            }
-          }
-          
-          // CSSセレクタで見つからない場合はXPathも試す
-          if (!resumeElement) {
-            const xpaths = [
-              '//*[@id="jsContainerContents"]/section/div/div[1]',
-              '//*[@id="jsContainerContents"]/section/div/div[1]/table[1]/tbody'
-            ];
-            
-            for (const xpath of xpaths) {
-              try {
-                const result = resumeDoc.evaluate(
-                  xpath,
-                  resumeDoc,
-                  null,
-                  XPathResult.FIRST_ORDERED_NODE_TYPE,
-                  null
-                );
-                resumeElement = result.singleNodeValue;
-                if (resumeElement) {
-                  console.log(`Resume found with XPath: ${xpath}`);
-                  break;
+          // 各要素を取得
+          for (const xpath of xpathsToExtract) {
+            try {
+              const result = resumeDoc.evaluate(
+                xpath,
+                resumeDoc,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+              );
+              const element = result.singleNodeValue;
+              
+              if (element) {
+                const text = this.cleanText(element);
+                if (text) {
+                  resumeParts.push(text);
+                  console.log(`Resume part found with XPath ${xpath}, length: ${text.length}`);
                 }
-              } catch (e) {
-                console.error('XPath error:', e);
               }
+            } catch (e) {
+              console.error(`XPath error for ${xpath}:`, e);
             }
           }
           
-          if (resumeElement) {
-            data.candidate_resume = this.cleanText(resumeElement);
-            console.log('Resume extracted, length:', data.candidate_resume.length);
+          // 全要素を結合
+          if (resumeParts.length > 0) {
+            data.candidate_resume = resumeParts.join('\n\n');
+            console.log(`Resume assembled from ${resumeParts.length} parts, total length: ${data.candidate_resume.length}`);
           } else {
-            console.warn('Resume element not found in the document');
+            console.warn('No resume elements found in the document');
           }
         } else {
           console.error('Failed to fetch resume, status:', resumeResponse.status);
