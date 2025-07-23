@@ -38,7 +38,8 @@ async def list_clients_page(request: Request, user: Optional[dict] = Depends(get
     try:
         # 非同期クライアントを関数内で初期化
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        response = await supabase_client.table('clients').select("*").order('company_id').execute()
+        # 媒体情報も一緒に取得
+        response = await supabase_client.table('clients').select("*, media_platform:media_platforms(display_name)").order('company_id').execute()
         if response.data:
             clients = response.data
     except Exception as e:
@@ -55,16 +56,26 @@ async def new_client_page(request: Request, user: Optional[dict] = Depends(get_c
     if not user or user.get("role") != "manager":
         return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
     
-    return templates.TemplateResponse("admin/new_client.html", {"request": request, "current_user": user})
+    try:
+        # 非同期クライアントを関数内で初期化
+        supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        # 媒体プラットフォーム一覧を取得
+        platforms_response = await supabase_client.table('media_platforms').select("*").eq('is_active', True).order('sort_order').execute()
+        media_platforms = platforms_response.data if platforms_response.data else []
+    except Exception as e:
+        print(f"Error fetching media platforms: {e}")
+        media_platforms = []
+    
+    return templates.TemplateResponse("admin/new_client.html", {
+        "request": request, 
+        "current_user": user,
+        "media_platforms": media_platforms
+    })
 
 @router.post("/new")
 async def create_client(
     name: str = Form(...),
-    industry: Optional[str] = Form(None),
-    size: Optional[str] = Form(None),
-    contact_person: Optional[str] = Form(None),
-    contact_email: Optional[EmailStr] = Form(None),
-    allows_direct_scraping: bool = Form(False),
+    media_platform_id: str = Form(...),
     user: Optional[dict] = Depends(get_current_user_from_cookie)
 ):
     """
@@ -73,25 +84,59 @@ async def create_client(
     if not user or user.get("role") != "manager":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Generate company_id from name if not provided
-    import re
-    company_id = re.sub(r'[^a-zA-Z0-9]', '', name.lower())[:20]
-    
-    client_data = {
-        "company_id": company_id,
-        "name": name,
-        "allows_direct_scraping": allows_direct_scraping
-    }
-    
     try:
         # 非同期クライアントを関数内で初期化 (書き込みにはSERVICE_KEYを使用)
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        await supabase_client.table("clients").insert(client_data).execute()
+        
+        # company_idを生成
+        try:
+            # RPC関数を使用
+            company_id_response = await supabase_client.rpc('generate_company_id').execute()
+            company_id = company_id_response.data if company_id_response.data else None
+            
+            if not company_id:
+                raise Exception("Failed to generate company_id")
+                
+        except Exception as gen_error:
+            print(f"Error generating company_id with RPC: {gen_error}")
+            # フォールバック: 最大値を取得して次の番号を生成
+            try:
+                max_response = await supabase_client.table('clients').select('company_id').like('company_id', 'comp-%').order('company_id', desc=True).limit(1).execute()
+                
+                if max_response.data and len(max_response.data) > 0:
+                    last_id = max_response.data[0]['company_id']
+                    # comp-001 形式から数値を抽出
+                    last_num = int(last_id.split('-')[1])
+                    next_num = last_num + 1
+                else:
+                    next_num = 1
+                
+                company_id = f"comp-{str(next_num).zfill(3)}"
+            except Exception as fallback_error:
+                print(f"Fallback also failed: {fallback_error}")
+                # 最終手段: タイムスタンプベース
+                import time
+                company_id = f"comp-{int(time.time()) % 10000:04d}"
+        
+        client_data = {
+            "company_id": company_id,
+            "name": name,
+            "media_platform_id": media_platform_id,
+            "is_active": True
+        }
+        
+        response = await supabase_client.table("clients").insert(client_data).execute()
+        
+        if not response.data:
+            raise Exception("Failed to create client")
+            
     except Exception as e:
         print(f"Error creating client: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        import urllib.parse
+        error_msg = urllib.parse.quote(str(e))
+        return RedirectResponse(url=f"/manager/clients/new?error=create_failed&message={error_msg}", status_code=303)
 
-    return RedirectResponse(url="/manager/clients", status_code=303)
+    return RedirectResponse(url="/manager/clients?success=created", status_code=303)
 
 @router.get("/api")
 async def get_clients(user: Optional[dict] = Depends(get_current_user_from_cookie)):
@@ -117,13 +162,25 @@ async def edit_client_page(client_id: str, request: Request, user: Optional[dict
     try:
         # 非同期クライアントを関数内で初期化
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        # クライアント情報を取得
         response = await supabase_client.table('clients').select("*").eq('id', client_id).execute()
         
         if not response.data:
             raise HTTPException(status_code=404, detail="Client not found")
         
         client = response.data[0]
-        return templates.TemplateResponse("admin/edit_client.html", {"request": request, "client": client, "current_user": user})
+        
+        # 媒体プラットフォーム一覧を取得
+        platforms_response = await supabase_client.table('media_platforms').select("*").eq('is_active', True).order('sort_order').execute()
+        media_platforms = platforms_response.data if platforms_response.data else []
+        
+        return templates.TemplateResponse("admin/edit_client.html", {
+            "request": request, 
+            "client": client, 
+            "media_platforms": media_platforms,
+            "current_user": user
+        })
     except Exception as e:
         print(f"Error fetching client: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -134,6 +191,7 @@ async def update_client(
     request: Request,
     company_id: str = Form(...),
     name: str = Form(...),
+    media_platform_id: str = Form(...),
     user: Optional[dict] = Depends(get_current_user_from_cookie)
 ):
     """
@@ -142,14 +200,10 @@ async def update_client(
     if not user or user.get("role") != "manager":
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    # Handle checkbox value
-    form_data = await request.form()
-    allows_direct_scraping = "allows_direct_scraping" in form_data
-    
     update_data = {
         "company_id": company_id,
         "name": name,
-        "allows_direct_scraping": allows_direct_scraping
+        "media_platform_id": media_platform_id
     }
     
     try:
@@ -176,9 +230,28 @@ async def delete_client(
     try:
         # 非同期クライアントを関数内で初期化 (書き込みにはSERVICE_KEYを使用)
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        await supabase_client.table("clients").delete().eq('id', client_id).execute()
+        
+        # まず削除対象が存在するか確認
+        check_response = await supabase_client.table("clients").select('id').eq('id', client_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/manager/clients?error=not_found", status_code=303)
+        
+        # 削除実行
+        response = await supabase_client.table("clients").delete().eq('id', client_id).execute()
+        
+        # 削除結果の確認
+        if not response.data:
+            raise Exception("削除に失敗しました")
+            
     except Exception as e:
-        print(f"Error deleting client: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            print(f"Foreign key constraint error deleting client: {error_msg}")
+            return RedirectResponse(url="/manager/clients?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting client: {error_msg}")
+            return RedirectResponse(url="/manager/clients?error=delete_failed", status_code=303)
     
-    return RedirectResponse(url="/manager/clients", status_code=303)
+    return RedirectResponse(url="/manager/clients?success=deleted", status_code=303)

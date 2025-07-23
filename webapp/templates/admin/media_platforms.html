@@ -13,28 +13,8 @@
                 </a>
             </div>
 
-            <!-- アラート表示 -->
-            {% if request.query_params.get('success') == 'created' %}
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                媒体プラットフォームを作成しました。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% elif request.query_params.get('success') == 'updated' %}
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                媒体プラットフォームを更新しました。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% elif request.query_params.get('success') == 'deleted' %}
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                媒体プラットフォームを削除しました。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% elif request.query_params.get('error') %}
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                エラーが発生しました。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endif %}
+            <!-- メッセージ表示 -->
+            {% include "_messages.html" %}
 
             <!-- 媒体プラットフォーム一覧 -->
             <div class="card">

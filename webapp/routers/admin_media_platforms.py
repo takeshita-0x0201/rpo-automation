@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 
 from core.utils.supabase_client import get_supabase_client
+from core.utils.supabase_service import get_supabase_service_client
 from .auth import get_current_user_from_cookie
 
 router = APIRouter(prefix="/admin/media-platforms", tags=["admin-media-platforms"])
@@ -219,19 +220,33 @@ async def delete_media_platform(
 ):
     """媒体プラットフォーム削除"""
     if not user or user.get("role") != "admin":
-        return {"success": False, "error": "Unauthorized"}
+        return RedirectResponse(url="/admin/media-platforms?error=unauthorized", status_code=303)
     
     try:
-        supabase = get_supabase_client()
+        # サービスクライアントを使用（RLSバイパス）
+        supabase = get_supabase_service_client()
         
-        # 削除
+        # まず削除対象が存在するか確認
+        check_response = supabase.table("media_platforms").select('id').eq('id', platform_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/admin/media-platforms?error=not_found", status_code=303)
+        
+        # 削除実行
         result = supabase.table("media_platforms").delete().eq("id", platform_id).execute()
         
-        if result.data:
-            return {"success": True}
-        else:
-            return {"success": False, "error": "削除に失敗しました"}
+        # 削除結果の確認
+        if not result.data:
+            raise Exception("削除に失敗しました")
+        
+        return RedirectResponse(url="/admin/media-platforms?success=deleted", status_code=303)
             
     except Exception as e:
-        print(f"Error deleting media platform: {e}")
-        return {"success": False, "error": str(e)}
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            print(f"Foreign key constraint error deleting media platform: {error_msg}")
+            return RedirectResponse(url="/admin/media-platforms?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting media platform: {error_msg}")
+            return RedirectResponse(url="/admin/media-platforms?error=delete_failed", status_code=303)

@@ -230,9 +230,28 @@ async def delete_client(
     try:
         # 非同期クライアントを関数内で初期化 (書き込みにはSERVICE_KEYを使用)
         supabase_client: AsyncClient = await create_async_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        await supabase_client.table("clients").delete().eq('id', client_id).execute()
+        
+        # まず削除対象が存在するか確認
+        check_response = await supabase_client.table("clients").select('id').eq('id', client_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/admin/clients?error=not_found", status_code=303)
+        
+        # 削除実行
+        response = await supabase_client.table("clients").delete().eq('id', client_id).execute()
+        
+        # 削除結果の確認
+        if not response.data:
+            raise Exception("削除に失敗しました")
+            
     except Exception as e:
-        print(f"Error deleting client: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            print(f"Foreign key constraint error deleting client: {error_msg}")
+            return RedirectResponse(url="/admin/clients?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting client: {error_msg}")
+            return RedirectResponse(url="/admin/clients?error=delete_failed", status_code=303)
     
     return RedirectResponse(url="/admin/clients?success=deleted", status_code=303)

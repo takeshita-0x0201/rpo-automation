@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import datetime
 from .auth import get_current_user_from_cookie
 from core.utils.supabase_client import get_supabase_client as get_db
+from core.utils.supabase_service import get_supabase_service_client
 
 async def get_current_manager_user(user: dict = Depends(get_current_user_from_cookie)) -> dict:
     if not user or user.get("role") not in ["manager", "admin"]:
@@ -246,32 +247,46 @@ async def delete_job_posting(
 ):
     """求人票を削除"""
     try:
+        # サービスクライアントを使用（RLSバイパス）
+        db_service = get_supabase_service_client()
+        
+        # まず削除対象が存在するか確認
+        check_response = db_service.table('job_postings').select('id').eq('id', posting_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/manager/job-postings?error=not_found", status_code=303)
+            
         # 関連する採用要件があるかチェック
-        req_check = db.table('job_requirements')\
+        req_check = db_service.table('job_requirements')\
             .select('id', count='exact')\
             .eq('job_posting_id', posting_id)\
             .execute()
             
-        if req_check.count > 0:
+        if req_check.count and req_check.count > 0:
             return RedirectResponse(
                 url=f"/manager/job-postings/{posting_id}/view?error=has_requirements",
                 status_code=303
             )
         
         # 削除実行
-        response = db.table('job_postings')\
+        response = db_service.table('job_postings')\
             .delete()\
             .eq('id', posting_id)\
             .execute()
-            
-        if response.error:
-            raise HTTPException(status_code=500, detail=str(response.error))
+        
+        # 削除結果の確認
+        if not response.data:
+            raise Exception("削除に失敗しました")
             
     except Exception as e:
-        return RedirectResponse(
-            url=f"/manager/job-postings?error=delete_failed", 
-            status_code=303
-        )
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            print(f"Foreign key constraint error deleting job posting: {error_msg}")
+            return RedirectResponse(url="/manager/job-postings?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting job posting: {error_msg}")
+            return RedirectResponse(url="/manager/job-postings?error=delete_failed", status_code=303)
 
     return RedirectResponse(
         url="/manager/job-postings?success=deleted",

@@ -12,7 +12,12 @@ async def get_current_admin_user(user: dict = Depends(get_current_user_from_cook
     if not user or user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     return user
-from core.utils.supabase_client import get_supabase_client as get_db
+from core.utils.supabase_client import get_supabase_client
+from core.utils.supabase_service import get_supabase_service_client
+
+def get_db():
+    """データベースクライアントを取得（RLSバイパス）"""
+    return get_supabase_service_client()
 
 router = APIRouter()
 templates_path = pathlib.Path(__file__).parent.parent / "templates"
@@ -285,11 +290,27 @@ async def delete_requirement(
 ):
     """採用要件を削除"""
     try:
+        # まず削除対象が存在するか確認
+        check_response = db.table('job_requirements').select('id').eq('id', requirement_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/admin/requirements?error=not_found", status_code=303)
+        
+        # 削除実行
         response = db.table('job_requirements').delete().eq('id', requirement_id).execute()
-        if response.error:
-            raise HTTPException(status_code=500, detail=str(response.error))
+        
+        # 削除結果の確認
+        if not response.data:
+            raise Exception("削除に失敗しました")
+            
     except Exception as e:
-        return RedirectResponse(url=f"/admin/requirements?error=delete_failed", status_code=303)
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            return RedirectResponse(url="/admin/requirements?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting requirement: {error_msg}")
+            return RedirectResponse(url="/admin/requirements?error=delete_failed", status_code=303)
 
     return RedirectResponse(
         url="/admin/requirements?success=deleted",

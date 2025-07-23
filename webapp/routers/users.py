@@ -12,6 +12,7 @@ from pydantic import BaseModel, EmailStr, constr
 from enum import Enum
 
 from core.utils.supabase_client import get_supabase_client
+from core.utils.supabase_service import get_supabase_service_client
 from .auth import get_current_user_from_cookie
 
 router = APIRouter()
@@ -318,23 +319,44 @@ async def delete_user(request: Request, user_id: str, current_user: dict = Depen
         return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
     
     try:
-        supabase = get_supabase_client()
+        # サービスクライアントを使用（RLSバイパス）
+        supabase_service = get_supabase_service_client()
+        supabase = get_supabase_client()  # Auth操作用
         
         # 自分自身は削除できない
         if current_user.get("id") == user_id:
-            raise HTTPException(status_code=400, detail="Cannot delete yourself")
+            return RedirectResponse(url="/admin/users?error=cannot_delete_self", status_code=303)
         
-        # プロファイルを削除（カスケードでauth userも削除される設定の場合）
-        # まずプロファイルを削除
-        profile_result = supabase.table('profiles').delete().eq('id', user_id).execute()
+        # まず削除対象が存在するか確認
+        check_response = supabase_service.table('profiles').select('id').eq('id', user_id).execute()
+        if not check_response.data:
+            return RedirectResponse(url="/admin/users?error=not_found", status_code=303)
+        
+        # プロファイルを削除
+        profile_result = supabase_service.table('profiles').delete().eq('id', user_id).execute()
+        
+        if not profile_result.data:
+            raise Exception("削除に失敗しました")
         
         # Supabase Authからもユーザーを削除
-        auth_result = supabase.auth.admin.delete_user(user_id)
+        try:
+            auth_result = supabase.auth.admin.delete_user(user_id)
+        except Exception as auth_error:
+            # Auth削除に失敗してもエラーにしない（プロファイルは削除済み）
+            print(f"Warning: Failed to delete auth user: {auth_error}")
         
-        return RedirectResponse(url="/admin/users", status_code=303)
+        return RedirectResponse(url="/admin/users?success=deleted", status_code=303)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if "violates foreign key constraint" in error_msg:
+            # 外部キー制約エラー
+            print(f"Foreign key constraint error deleting user: {error_msg}")
+            return RedirectResponse(url="/admin/users?error=has_related_data", status_code=303)
+        else:
+            # その他のエラー
+            print(f"Error deleting user: {error_msg}")
+            return RedirectResponse(url="/admin/users?error=delete_failed", status_code=303)
 
 # API エンドポイント（JSON レスポンス）
 @router.get("/api", response_model=List[UserResponse])
