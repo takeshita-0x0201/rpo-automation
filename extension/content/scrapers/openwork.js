@@ -190,13 +190,14 @@ class OpenWorkScraper {
       // その他の必須フィールド
       data.client_id = this.sessionData.clientId || this.sessionData.client_id;
       data.requirement_id = this.sessionData.requirementId || this.sessionData.requirement_id;
+      data.scraping_session_id = this.sessionData.sessionId || this.sessionData.session_id;
       data.scraped_by = this.sessionData.scraped_by || 'extension';
       data.scraped_at = new Date().toISOString();
       
       console.log('Extracted candidate data:', data);
       
       // 必須フィールドの確認
-      const requiredFields = ['candidate_id', 'platform', 'client_id', 'requirement_id'];
+      const requiredFields = ['candidate_id', 'platform', 'client_id', 'requirement_id', 'scraping_session_id'];
       const missingFields = requiredFields.filter(field => !data[field]);
       if (missingFields.length > 0) {
         console.error('Missing required fields:', missingFields);
@@ -207,6 +208,7 @@ class OpenWorkScraper {
         candidate_id: typeof data.candidate_id,
         client_id: typeof data.client_id,
         requirement_id: typeof data.requirement_id,
+        scraping_session_id: typeof data.scraping_session_id,
         age: typeof data.age,
         enrolled_company_count: typeof data.enrolled_company_count
       });
@@ -214,7 +216,8 @@ class OpenWorkScraper {
       // 実際の値も確認
       console.log('Field values:', {
         client_id: data.client_id,
-        requirement_id: data.requirement_id
+        requirement_id: data.requirement_id,
+        scraping_session_id: data.scraping_session_id
       });
       
       return data;
