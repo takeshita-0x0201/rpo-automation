@@ -27,6 +27,7 @@
         "https://*.cr-support.jp/*",
         "https://*.directrecruiting.jp/*",
         "https://*.green-japan.com/*",
+        "https://*.recruiting.vorkers.com/*",
         "https://*.example.com/*"
       ],
       "js": [
@@ -36,6 +37,7 @@
         "content/ui-overlay.js",
         "content/data-formatter.js",
         "content/scrapers/bizreach.js",
+        "content/scrapers/openwork.js",
         "content/scrapers/example-site.js",
         "content/content.js"
       ],
@@ -53,7 +55,8 @@
       "https://*.bizreach.jp/*",
       "https://*.cr-support.jp/*",
       "https://*.directrecruiting.jp/*",
-      "https://*.green-japan.com/*"
+      "https://*.green-japan.com/*",
+      "https://*.recruiting.vorkers.com/*"
     ]
   }],
   

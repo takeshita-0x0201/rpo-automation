@@ -16,6 +16,11 @@ async function initialize() {
       scraper = new BizReachScraper();
       await scraper.initialize();
     }
+  } else if (currentDomain.includes('recruiting.vorkers.com') || currentDomain.includes('openwork')) {
+    if (typeof OpenWorkScraper !== 'undefined') {
+      scraper = new OpenWorkScraper();
+      await scraper.initialize();
+    }
   } else if (currentDomain.includes('example.com')) {
     // 新しいサイトのスクレイパー
     if (typeof ExampleSiteScraper !== 'undefined') {

@@ -1,0 +1,347 @@
+// OpenWork スクレイパー
+class OpenWorkScraper {
+  constructor() {
+    this.name = 'OpenWork';
+    this.domain = 'recruiting.vorkers.com';
+    this.platform = 'openwork';
+    this.isActive = false;
+    this.isPaused = false;
+    this.stats = {
+      processed: 0,
+      success: 0,
+      error: 0,
+      skipped: 0
+    };
+  }
+
+  // 初期化
+  async initialize() {
+    console.log('OpenWork Scraper initialized');
+    return true;
+  }
+
+  // 現在のページがスクレイピング対象かチェック
+  canScrape() {
+    return window.location.hostname.includes('recruiting.vorkers.com') &&
+           window.location.pathname.includes('/scout/candidates');
+  }
+
+  // スクレイピング開始
+  async startScraping(sessionData) {
+    console.log('Starting OpenWork scraping with session:', sessionData);
+    
+    this.isActive = true;
+    this.isPaused = false;
+    this.sessionData = sessionData;
+    this.stats = { processed: 0, success: 0, error: 0, skipped: 0 };
+    
+    try {
+      // 現在のページから開始
+      await this.scrapeCurrentBatch();
+      
+      // 自動的に次のページへ進む場合
+      if (this.sessionData.auto_pagination) {
+        await this.continueScraping();
+      }
+      
+      return { success: true, stats: this.stats };
+    } catch (error) {
+      console.error('Scraping error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // 現在表示されている候補者をスクレイピング
+  async scrapeCurrentBatch() {
+    console.log('Scraping current batch...');
+    
+    // ドロワー要素を確認
+    const drawer = document.querySelector('#testDrawer');
+    if (!drawer) {
+      throw new Error('候補者情報のドロワーが見つかりません');
+    }
+
+    try {
+      // 候補者情報を取得
+      const candidateData = await this.extractCandidateData();
+      
+      if (candidateData) {
+        // APIに送信
+        const result = await this.sendToAPI(candidateData);
+        
+        if (result.success) {
+          this.stats.success++;
+          this.updateUI('候補者を保存しました', 'success');
+        } else {
+          this.stats.error++;
+          this.updateUI(`エラー: ${result.error}`, 'error');
+        }
+      }
+      
+      this.stats.processed++;
+      
+    } catch (error) {
+      console.error('Batch scraping error:', error);
+      this.stats.error++;
+      this.updateUI(`エラー: ${error.message}`, 'error');
+    }
+  }
+
+  // 候補者データを抽出
+  async extractCandidateData() {
+    const data = {};
+    
+    try {
+      // 候補者ID
+      const candidateIdElement = document.querySelector('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/dl/dd');
+      if (candidateIdElement) {
+        data.candidate_id = this.cleanText(candidateIdElement);
+      }
+      
+      // 候補者ID取得の別の方法（XPathが機能しない場合）
+      if (!data.candidate_id) {
+        const idElement = document.querySelector('#testDrawer dl dd');
+        if (idElement) {
+          data.candidate_id = this.cleanText(idElement);
+        }
+      }
+      
+      if (!data.candidate_id) {
+        console.warn('候補者IDが見つかりません');
+        return null;
+      }
+      
+      // プラットフォーム
+      data.platform = this.platform;
+      
+      // 候補者リンク
+      data.candidate_link = `https://recruiting.vorkers.com/scout/candidates/${data.candidate_id}/resume`;
+      
+      // 現在の会社名
+      const companyElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/div/h2/span');
+      if (companyElement) {
+        data.candidate_company = this.cleanText(companyElement);
+      }
+      
+      // 性別（OpenWorkでは提供されていない）
+      data.gender = null;
+      
+      // 年齢
+      const ageElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/p[2]/span[1]');
+      if (ageElement) {
+        const ageText = this.cleanText(ageElement);
+        const ageMatch = ageText.match(/(\d+)歳/);
+        if (ageMatch) {
+          data.age = parseInt(ageMatch[1]);
+        }
+      }
+      
+      // 在籍企業数
+      const companyCountElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/p[2]/span[4]');
+      if (companyCountElement) {
+        const countText = this.cleanText(companyCountElement);
+        const countMatch = countText.match(/(\d+)社/);
+        if (countMatch) {
+          data.enrolled_company_count = parseInt(countMatch[1]);
+        }
+      }
+      
+      // レジュメ内容を取得（詳細ページにアクセスが必要な場合）
+      if (this.sessionData.scrape_resume) {
+        await this.wait(1000); // レート制限対策
+        
+        // レジュメページを開く
+        const resumeResponse = await fetch(data.candidate_link, {
+          credentials: 'include',
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        
+        if (resumeResponse.ok) {
+          const resumeHtml = await resumeResponse.text();
+          const parser = new DOMParser();
+          const resumeDoc = parser.parseFromString(resumeHtml, 'text/html');
+          
+          const resumeElement = resumeDoc.querySelector('#jsContainerContents section div div:first-child');
+          if (resumeElement) {
+            data.candidate_resume = this.cleanText(resumeElement);
+          }
+        }
+      }
+      
+      // その他の必須フィールド
+      data.client_id = this.sessionData.client_id;
+      data.requirement_id = this.sessionData.requirement_id;
+      data.scraped_by = this.sessionData.scraped_by || 'extension';
+      data.scraped_at = new Date().toISOString();
+      
+      console.log('Extracted candidate data:', data);
+      return data;
+      
+    } catch (error) {
+      console.error('Data extraction error:', error);
+      throw error;
+    }
+  }
+
+  // XPathで要素を取得
+  getElementByXPath(xpath) {
+    try {
+      const result = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      return result.singleNodeValue;
+    } catch (error) {
+      console.error('XPath error:', xpath, error);
+      return null;
+    }
+  }
+
+  // 次のページへ移動して継続
+  async continueScraping() {
+    if (!this.isActive || this.isPaused) {
+      return;
+    }
+    
+    // 次へボタンを探す
+    const nextButton = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/ul/li[2]/a');
+    
+    if (nextButton && !nextButton.disabled && !nextButton.classList.contains('disabled')) {
+      console.log('Moving to next candidate...');
+      
+      // クリック前に待機
+      await this.wait(this.sessionData.scraping_delay || 2000);
+      
+      // 次の候補者へ
+      nextButton.click();
+      
+      // ページが更新されるのを待つ
+      await this.wait(1500);
+      
+      // 次の候補者をスクレイピング
+      await this.scrapeCurrentBatch();
+      
+      // 再帰的に続行
+      await this.continueScraping();
+    } else {
+      console.log('No more candidates or scraping stopped');
+      this.updateUI('スクレイピングが完了しました', 'success');
+    }
+  }
+
+  // APIに候補者データを送信
+  async sendToAPI(candidateData) {
+    try {
+      const apiUrl = this.sessionData.api_endpoint || 'http://localhost:8000/api';
+      const response = await fetch(`${apiUrl}/candidates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.sessionData.api_key}`
+        },
+        body: JSON.stringify(candidateData)
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'API request failed');
+      }
+      
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('API error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // テキストのクリーンアップ
+  cleanText(element) {
+    if (!element) return '';
+    
+    const text = element.textContent || element.innerText || '';
+    return text.trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[\n\r]+/g, ' ')
+      .trim();
+  }
+
+  // 待機処理
+  wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // UI更新
+  updateUI(message, type = 'info') {
+    // content.jsのupdateOverlayStatus関数を呼び出す
+    if (typeof updateOverlayStatus === 'function') {
+      updateOverlayStatus(message, type);
+    }
+    
+    // 統計情報も更新
+    if (typeof updateOverlayStats === 'function') {
+      updateOverlayStats(this.stats);
+    }
+  }
+
+  // 一時停止
+  pause() {
+    this.isPaused = true;
+    this.updateUI('一時停止中', 'paused');
+  }
+
+  // 再開
+  resume() {
+    this.isPaused = false;
+    this.updateUI('再開しました', 'info');
+    
+    // 自動ページ送りが有効な場合は継続
+    if (this.sessionData && this.sessionData.auto_pagination) {
+      this.continueScraping();
+    }
+  }
+
+  // 停止
+  stop() {
+    this.isActive = false;
+    this.isPaused = false;
+    this.updateUI('スクレイピングを停止しました', 'info');
+  }
+
+  // 現在のページのみスクレイピング（単発実行用）
+  async scrapeCurrentPage() {
+    try {
+      const candidateData = await this.extractCandidateData();
+      
+      if (!candidateData) {
+        return { success: false, error: '候補者データが見つかりません' };
+      }
+      
+      // セッションデータがない場合のデフォルト値
+      if (!this.sessionData) {
+        this.sessionData = {
+          client_id: 'manual',
+          requirement_id: 'manual',
+          scraped_by: 'manual'
+        };
+      }
+      
+      candidateData.client_id = this.sessionData.client_id;
+      candidateData.requirement_id = this.sessionData.requirement_id;
+      candidateData.scraped_by = this.sessionData.scraped_by;
+      
+      return { success: true, data: candidateData };
+    } catch (error) {
+      console.error('Scrape current page error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+}
+
+// グローバルに公開
+window.OpenWorkScraper = OpenWorkScraper;
