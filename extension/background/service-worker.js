@@ -349,18 +349,36 @@ async function startScraping({ clientId, clientName, requirementId, pageLimit })
       } catch (e) {
         // content scriptがロードされていない場合は手動でインジェクト
         console.log('Content script not loaded, injecting...');
+        // 現在のURLを確認
+        const currentUrl = new URL(tab.url);
+        const files = [
+          'shared/constants.js',
+          'shared/utils.js',
+          'shared/scraping-config.js',
+          'content/ui-overlay.js',
+          'content/data-formatter.js'
+        ];
+        
+        // サイトに応じて必要なスクレイパーを追加
+        if (currentUrl.hostname.includes('bizreach') || currentUrl.hostname.includes('cr-support.jp')) {
+          files.push('content/scrapers/bizreach.js');
+        } else if (currentUrl.hostname.includes('vorkers.com')) {
+          files.push('content/scrapers/openwork.js');
+        }
+        
+        files.push('content/content.js');
+        
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          files: [
-            'shared/constants.js',
-            'shared/utils.js',
-            'shared/scraping-config.js',
-            'content/ui-overlay.js',
-            'content/data-formatter.js',
-            'content/scrapers/bizreach.js',
-            'content/content.js'
-          ]
+          files: files
         });
+        
+        // CSSもインジェクト
+        await chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          files: ['content/overlay.css']
+        });
+        
         // インジェクト後少し待つ
         await new Promise(resolve => setTimeout(resolve, 500));
       }

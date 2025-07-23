@@ -80,6 +80,18 @@ class OpenWorkScraper {
       
       this.stats.processed++;
       
+      // 進捗状況を更新
+      await chrome.runtime.sendMessage({
+        type: 'UPDATE_PROGRESS',
+        data: {
+          current: this.stats.processed,
+          total: this.sessionData.pageLimit || 100,
+          processed: this.stats.processed,
+          success: this.stats.success,
+          error: this.stats.error
+        }
+      });
+      
     } catch (error) {
       console.error('Batch scraping error:', error);
       this.stats.error++;
@@ -213,6 +225,22 @@ class OpenWorkScraper {
       return;
     }
     
+    // ページ数制限に達した場合
+    if (this.sessionData.pageLimit && this.stats.processed >= this.sessionData.pageLimit) {
+      console.log('Page limit reached');
+      this.updateUI('ページ数制限に達しました', 'success');
+      
+      // 完了を通知
+      await chrome.runtime.sendMessage({
+        type: 'SCRAPING_COMPLETE',
+        data: {
+          sessionId: this.sessionData.sessionId,
+          stats: this.stats
+        }
+      });
+      return;
+    }
+    
     // 次へボタンを探す
     const nextButton = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/ul/li[2]/a');
     
@@ -236,29 +264,37 @@ class OpenWorkScraper {
     } else {
       console.log('No more candidates or scraping stopped');
       this.updateUI('スクレイピングが完了しました', 'success');
+      
+      // 完了を通知
+      await chrome.runtime.sendMessage({
+        type: 'SCRAPING_COMPLETE',
+        data: {
+          sessionId: this.sessionData.sessionId,
+          stats: this.stats
+        }
+      });
     }
   }
 
-  // APIに候補者データを送信
+  // APIに候補者データを送信（background script経由）
   async sendToAPI(candidateData) {
     try {
-      const apiUrl = this.sessionData.api_endpoint || 'http://localhost:8000/api';
-      const response = await fetch(`${apiUrl}/candidates`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.sessionData.api_key}`
-        },
-        body: JSON.stringify(candidateData)
+      // background scriptに送信
+      const response = await chrome.runtime.sendMessage({
+        type: 'SEND_CANDIDATES',
+        data: {
+          candidates: [candidateData],
+          sessionId: this.sessionData.sessionId,
+          clientId: this.sessionData.clientId,
+          requirementId: this.sessionData.requirementId
+        }
       });
       
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'API request failed');
+      if (response && response.success) {
+        return { success: true, data: response.data };
+      } else {
+        throw new Error(response?.error || 'API送信に失敗しました');
       }
-      
-      return { success: true, data: result };
     } catch (error) {
       console.error('API error:', error);
       return { success: false, error: error.message };

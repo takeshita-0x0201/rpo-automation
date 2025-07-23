@@ -1,4 +1,5 @@
 // Content Script - メインエントリーポイント
+console.log('content.js loaded on:', window.location.hostname);
 
 // スクレイピング制御
 let isScrapingActive = false;
