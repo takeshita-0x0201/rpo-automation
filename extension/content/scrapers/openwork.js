@@ -202,6 +202,21 @@ class OpenWorkScraper {
         console.error('Missing required fields:', missingFields);
       }
       
+      // データ型の確認
+      console.log('Data types check:', {
+        candidate_id: typeof data.candidate_id,
+        client_id: typeof data.client_id,
+        requirement_id: typeof data.requirement_id,
+        age: typeof data.age,
+        enrolled_company_count: typeof data.enrolled_company_count
+      });
+      
+      // 実際の値も確認
+      console.log('Field values:', {
+        client_id: data.client_id,
+        requirement_id: data.requirement_id
+      });
+      
       return data;
       
     } catch (error) {
@@ -290,15 +305,20 @@ class OpenWorkScraper {
       console.log('Sending candidate data to API:', candidateData);
       console.log('Session data:', this.sessionData);
       
+      // 送信するデータの構造を確認
+      const messageData = {
+        candidates: [candidateData],
+        sessionId: this.sessionData.sessionId,
+        clientId: this.sessionData.clientId,
+        requirementId: this.sessionData.requirementId
+      };
+      
+      console.log('Message data to send:', JSON.stringify(messageData, null, 2));
+      
       // background scriptに送信
       const response = await chrome.runtime.sendMessage({
         type: 'SEND_CANDIDATES',
-        data: {
-          candidates: [candidateData],
-          sessionId: this.sessionData.sessionId,
-          clientId: this.sessionData.clientId,
-          requirementId: this.sessionData.requirementId
-        }
+        data: messageData
       });
       
       if (response && response.success) {
@@ -313,7 +333,21 @@ class OpenWorkScraper {
         if (response?.details) {
           console.error('API Error details:', response.details);
           // 詳細エラー情報がある場合は、その内容も確認
-          if (Array.isArray(response.details)) {
+          if (response.details.detail && Array.isArray(response.details.detail)) {
+            console.error('Validation errors from API:');
+            response.details.detail.forEach((err, index) => {
+              console.error(`  Error ${index + 1}:`, err);
+              if (err.loc) {
+                console.error(`    Location: ${err.loc.join(' -> ')}`);
+              }
+              if (err.msg) {
+                console.error(`    Message: ${err.msg}`);
+              }
+              if (err.type) {
+                console.error(`    Type: ${err.type}`);
+              }
+            });
+          } else if (Array.isArray(response.details)) {
             console.error('Validation errors:');
             response.details.forEach((err, index) => {
               console.error(`  ${index + 1}:`, err);
