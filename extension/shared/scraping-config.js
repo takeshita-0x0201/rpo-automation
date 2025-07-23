@@ -100,6 +100,27 @@ const PLATFORM_CONFIGS = {
       // TODO: セレクタを定義
     },
     scraper: 'DirectScraper'
+  },
+  
+  // 新しいサイトの例
+  exampleSite: {
+    name: 'Example Site',
+    domain: 'example.com',
+    selectors: {
+      CANDIDATE_ITEM: '.candidate-item',
+      CANDIDATE_NAME: '.candidate-name',
+      CANDIDATE_COMPANY: '.company',
+      CANDIDATE_POSITION: '.position',
+      CANDIDATE_RESUME: '.resume-summary',
+      NEXT_PAGE_BUTTON: '.pagination-next',
+      LOADING_INDICATOR: '.loading',
+      PAGE_INFO: '.page-info'
+    },
+    urls: {
+      searchPage: '/search',
+      candidateDetail: '/candidate/'
+    },
+    scraper: 'ExampleSiteScraper'
   }
 };
 

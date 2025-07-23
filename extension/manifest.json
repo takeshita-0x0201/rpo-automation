@@ -26,7 +26,8 @@
         "https://*.bizreach.jp/*",
         "https://*.cr-support.jp/*",
         "https://*.directrecruiting.jp/*",
-        "https://*.green-japan.com/*"
+        "https://*.green-japan.com/*",
+        "https://*.example.com/*"
       ],
       "js": [
         "shared/constants.js",
@@ -35,6 +36,7 @@
         "content/ui-overlay.js",
         "content/data-formatter.js",
         "content/scrapers/bizreach.js",
+        "content/scrapers/example-site.js",
         "content/content.js"
       ],
       "css": ["content/overlay.css"],

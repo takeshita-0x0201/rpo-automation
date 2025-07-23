@@ -10,13 +10,20 @@ async function initialize() {
   // 現在のドメインを確認
   const currentDomain = window.location.hostname;
   
-  // BizReachの場合、スクレイパーを初期化
+  // サイト別にスクレイパーを初期化
   if (currentDomain.includes('cr-support.jp') || currentDomain.includes('bizreach')) {
     if (typeof BizReachScraper !== 'undefined') {
       scraper = new BizReachScraper();
       await scraper.initialize();
     }
+  } else if (currentDomain.includes('example.com')) {
+    // 新しいサイトのスクレイパー
+    if (typeof ExampleSiteScraper !== 'undefined') {
+      scraper = new ExampleSiteScraper();
+      await scraper.initialize();
+    }
   }
+  // TODO: 他のサイトも同様に追加
   
   // メッセージリスナーを設定
   setupMessageListener();
