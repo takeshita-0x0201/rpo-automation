@@ -188,8 +188,8 @@ class OpenWorkScraper {
       }
       
       // その他の必須フィールド
-      data.client_id = this.sessionData.client_id;
-      data.requirement_id = this.sessionData.requirement_id;
+      data.client_id = this.sessionData.clientId || this.sessionData.client_id;
+      data.requirement_id = this.sessionData.requirementId || this.sessionData.requirement_id;
       data.scraped_by = this.sessionData.scraped_by || 'extension';
       data.scraped_at = new Date().toISOString();
       
@@ -307,10 +307,18 @@ class OpenWorkScraper {
         // エラーメッセージの詳細を取得
         let errorMessage = 'API送信に失敗しました';
         if (response?.error) {
+          // エラーメッセージが既に整形されている場合はそのまま使用
           errorMessage = response.error;
         }
         if (response?.details) {
           console.error('API Error details:', response.details);
+          // 詳細エラー情報がある場合は、その内容も確認
+          if (Array.isArray(response.details)) {
+            console.error('Validation errors:');
+            response.details.forEach((err, index) => {
+              console.error(`  ${index + 1}:`, err);
+            });
+          }
         }
         throw new Error(errorMessage);
       }
@@ -345,7 +353,11 @@ class OpenWorkScraper {
     
     // 統計情報も更新
     if (typeof updateOverlayStats === 'function') {
-      updateOverlayStats(this.stats);
+      const progress = Math.round((this.stats.processed / (this.sessionData.pageLimit || 100)) * 100);
+      updateOverlayStats({
+        ...this.stats,
+        progress: progress
+      });
     }
   }
 
