@@ -194,6 +194,14 @@ class OpenWorkScraper {
       data.scraped_at = new Date().toISOString();
       
       console.log('Extracted candidate data:', data);
+      
+      // 必須フィールドの確認
+      const requiredFields = ['candidate_id', 'platform', 'client_id', 'requirement_id'];
+      const missingFields = requiredFields.filter(field => !data[field]);
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields);
+      }
+      
       return data;
       
     } catch (error) {
@@ -279,6 +287,9 @@ class OpenWorkScraper {
   // APIに候補者データを送信（background script経由）
   async sendToAPI(candidateData) {
     try {
+      console.log('Sending candidate data to API:', candidateData);
+      console.log('Session data:', this.sessionData);
+      
       // background scriptに送信
       const response = await chrome.runtime.sendMessage({
         type: 'SEND_CANDIDATES',
@@ -293,7 +304,15 @@ class OpenWorkScraper {
       if (response && response.success) {
         return { success: true, data: response.data };
       } else {
-        throw new Error(response?.error || 'API送信に失敗しました');
+        // エラーメッセージの詳細を取得
+        let errorMessage = 'API送信に失敗しました';
+        if (response?.error) {
+          errorMessage = response.error;
+        }
+        if (response?.details) {
+          console.error('API Error details:', response.details);
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('API error:', error);
