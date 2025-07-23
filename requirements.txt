@@ -71,4 +71,4 @@ pre-commit==3.6.0
 
 # Type stubs
 types-requests==2.31.0.10
-pandas-stubs==2.2.3.250527
+pandas-stubs

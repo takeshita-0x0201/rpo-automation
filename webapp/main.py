@@ -207,9 +207,9 @@ async def admin_job_details(job_id: str, request: Request, user: Optional[dict] 
         from core.utils.supabase_client import get_supabase_client
         supabase = get_supabase_client()
         
-        # ジョブ情報を取得（クライアントと採用要件情報も含む）
+        # ジョブ情報を取得（クライアント情報を含む）
         job_response = supabase.table('jobs').select(
-            '*, client:clients(name), requirement:job_requirements(title)'
+            '*, client:clients(name)'
         ).eq('id', job_id).execute()
         
         if not job_response.data or len(job_response.data) == 0:
@@ -220,6 +220,21 @@ async def admin_job_details(job_id: str, request: Request, user: Optional[dict] 
             })
             
         job = job_response.data[0]
+        
+        # requirement情報を別途取得（requirement_idがtext型のため）
+        if job.get('requirement_id'):
+            try:
+                # requirement_idを直接使用
+                req_response = supabase.table('job_requirements').select('title').eq(
+                    'id', job['requirement_id']
+                ).execute()
+                if req_response.data and len(req_response.data) > 0:
+                    job['requirement'] = req_response.data[0]
+                else:
+                    job['requirement'] = {'title': 'N/A'}
+            except Exception as req_error:
+                print(f"Error fetching requirement: {req_error}")
+                job['requirement'] = {'title': 'N/A'}
         
         # ステータス履歴を取得
         status_history = []
@@ -245,11 +260,22 @@ async def admin_job_details(job_id: str, request: Request, user: Optional[dict] 
                 # 評価取得エラーも無視して続行
         
     except Exception as e:
-        print(f"Error fetching job details: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"Error fetching job details for job_id {job_id}: {e}")
+        print(f"Traceback: {error_detail}")
+        
+        # エラーメッセージを詳細に
+        error_message = f"ジョブ情報の取得に失敗しました (ID: {job_id})"
+        if "relation" in str(e).lower():
+            error_message += " - テーブル関連エラー"
+        elif "connection" in str(e).lower():
+            error_message += " - データベース接続エラー"
+        
         return templates.TemplateResponse("admin/error.html", {
             "request": request, 
             "current_user": user,
-            "error": "ジョブ情報の取得に失敗しました"
+            "error": error_message
         })
     
     return templates.TemplateResponse("admin/job_details.html", {
