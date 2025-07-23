@@ -35,6 +35,12 @@ class OpenWorkScraper {
     this.sessionData = sessionData;
     this.stats = { processed: 0, success: 0, error: 0, skipped: 0 };
     
+    // scrape_resumeフラグの確認
+    if (!('scrape_resume' in this.sessionData)) {
+      console.log('scrape_resume flag not found in sessionData, defaulting to false');
+      this.sessionData.scrape_resume = false;
+    }
+    
     try {
       // 現在のページから開始
       await this.scrapeCurrentBatch();
@@ -164,7 +170,9 @@ class OpenWorkScraper {
       }
       
       // レジュメ内容を取得（詳細ページにアクセスが必要な場合）
+      console.log('Checking scrape_resume flag:', this.sessionData.scrape_resume);
       if (this.sessionData.scrape_resume) {
+        console.log('Attempting to fetch resume from:', data.candidate_link);
         await this.wait(1000); // レート制限対策
         
         // レジュメページを開く
@@ -176,14 +184,37 @@ class OpenWorkScraper {
         });
         
         if (resumeResponse.ok) {
+          console.log('Resume fetch successful, parsing HTML...');
           const resumeHtml = await resumeResponse.text();
           const parser = new DOMParser();
           const resumeDoc = parser.parseFromString(resumeHtml, 'text/html');
           
-          const resumeElement = resumeDoc.querySelector('#jsContainerContents section div div:first-child');
+          // 複数のセレクタを試す
+          const selectors = [
+            '#jsContainerContents section div div:first-child',
+            '#jsContainerContents .resume-content',
+            '#jsContainerContents',
+            '.candidate-resume',
+            'section.resume'
+          ];
+          
+          let resumeElement = null;
+          for (const selector of selectors) {
+            resumeElement = resumeDoc.querySelector(selector);
+            if (resumeElement) {
+              console.log(`Resume found with selector: ${selector}`);
+              break;
+            }
+          }
+          
           if (resumeElement) {
             data.candidate_resume = this.cleanText(resumeElement);
+            console.log('Resume extracted, length:', data.candidate_resume.length);
+          } else {
+            console.warn('Resume element not found in the document');
           }
+        } else {
+          console.error('Failed to fetch resume, status:', resumeResponse.status);
         }
       }
       
@@ -245,6 +276,41 @@ class OpenWorkScraper {
     }
   }
 
+  // 現在の候補者IDを取得
+  getCurrentCandidateId() {
+    try {
+      // 候補者ID要素を探す
+      const idElement = document.querySelector('#testDrawer dl dd') || 
+                       this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/dl/dd');
+      return idElement ? this.cleanText(idElement) : null;
+    } catch (error) {
+      console.error('Error getting current candidate ID:', error);
+      return null;
+    }
+  }
+
+  // 候補者の変更を待つ
+  async waitForCandidateChange(previousCandidateId) {
+    console.log('Waiting for candidate change from:', previousCandidateId);
+    let attempts = 0;
+    const maxAttempts = 30; // 最大3秒待機
+    
+    while (attempts < maxAttempts) {
+      await this.wait(100);
+      const currentId = this.getCurrentCandidateId();
+      
+      if (currentId && currentId !== previousCandidateId) {
+        console.log('Candidate changed to:', currentId);
+        await this.wait(500); // 追加の安定待機
+        return;
+      }
+      
+      attempts++;
+    }
+    
+    console.warn('Timeout waiting for candidate change');
+  }
+
   // 次のページへ移動して継続
   async continueScraping() {
     if (!this.isActive || this.isPaused) {
@@ -267,26 +333,76 @@ class OpenWorkScraper {
       return;
     }
     
-    // 次へボタンを探す
-    const nextButton = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/ul/li[2]/a');
+    // 次へボタンを探す（複数のセレクタを試す）
+    console.log('Looking for next button...');
     
-    if (nextButton && !nextButton.disabled && !nextButton.classList.contains('disabled')) {
-      console.log('Moving to next candidate...');
+    let nextButton = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/ul/li[2]/a');
+    
+    // XPathで見つからない場合はCSSセレクタも試す
+    if (!nextButton) {
+      const cssSelectors = [
+        '#testDrawer ul li:nth-child(2) a',
+        '#testDrawer .pagination-next',
+        '#testDrawer a[aria-label*="次"]',
+        '#testDrawer a:contains("次へ")',
+        'a.next-button'
+      ];
       
-      // クリック前に待機
-      await this.wait(this.sessionData.scraping_delay || 2000);
+      for (const selector of cssSelectors) {
+        try {
+          nextButton = document.querySelector(selector);
+          if (nextButton) {
+            console.log(`Next button found with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // セレクタエラーを無視
+        }
+      }
+    }
+    
+    if (nextButton) {
+      // ボタンの状態を確認
+      const isDisabled = nextButton.disabled || 
+                        nextButton.classList.contains('disabled') ||
+                        nextButton.getAttribute('aria-disabled') === 'true';
       
-      // 次の候補者へ
-      nextButton.click();
+      console.log('Next button found, disabled:', isDisabled);
       
-      // ページが更新されるのを待つ
-      await this.wait(1500);
-      
-      // 次の候補者をスクレイピング
-      await this.scrapeCurrentBatch();
-      
-      // 再帰的に続行
-      await this.continueScraping();
+      if (!isDisabled) {
+        console.log('Moving to next candidate...');
+        
+        // 現在の候補者IDを記録
+        const currentCandidateId = this.getCurrentCandidateId();
+        console.log('Current candidate ID:', currentCandidateId);
+        
+        // クリック前に待機
+        await this.wait(this.sessionData.scraping_delay || 2000);
+        
+        // 次の候補者へ
+        nextButton.click();
+        
+        // ページが更新されるのを待つ（候補者IDの変更を待つ）
+        await this.waitForCandidateChange(currentCandidateId);
+        
+        // 次の候補者をスクレイピング
+        await this.scrapeCurrentBatch();
+        
+        // 再帰的に続行
+        await this.continueScraping();
+      } else {
+        console.log('Next button is disabled, no more candidates');
+        this.updateUI('すべての候補者を処理しました', 'success');
+        
+        // 完了を通知
+        await chrome.runtime.sendMessage({
+          type: 'SCRAPING_COMPLETE',
+          data: {
+            sessionId: this.sessionData.sessionId,
+            stats: this.stats
+          }
+        });
+      }
     } else {
       console.log('No more candidates or scraping stopped');
       this.updateUI('スクレイピングが完了しました', 'success');
