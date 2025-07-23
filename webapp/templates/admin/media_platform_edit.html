@@ -1,0 +1,97 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}媒体プラットフォーム編集 - RPO Automation{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12 col-lg-8">
+            <div class="d-flex align-items-center mb-4">
+                <a href="/admin/media-platforms" class="btn btn-link p-0 me-3">
+                    <i class="bi bi-arrow-left"></i> 戻る
+                </a>
+                <h1 class="h3 mb-0">媒体プラットフォーム編集</h1>
+            </div>
+
+            <!-- エラー表示 -->
+            {% if request.query_params.get('error') %}
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                更新に失敗しました。入力内容を確認してください。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="/admin/media-platforms/{{ platform.id }}/edit">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">識別名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" required
+                                   pattern="[a-z0-9_]+" 
+                                   title="半角英数字とアンダースコアのみ使用可能です"
+                                   value="{{ platform.name }}"
+                                   placeholder="例: bizreach, linkedin">
+                            <div class="form-text">システム内部で使用する識別子（半角英数字・アンダースコアのみ）</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="display_name" class="form-label">表示名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="display_name" name="display_name" required
+                                   value="{{ platform.display_name }}"
+                                   placeholder="例: ビズリーチ, LinkedIn">
+                            <div class="form-text">画面に表示される名前</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">説明</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"
+                                      placeholder="例: 即戦力人材の転職サイト">{{ platform.description or '' }}</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="url_patterns" class="form-label">URLパターン</label>
+                            <input type="text" class="form-control" id="url_patterns" name="url_patterns"
+                                   value="{{ platform.url_patterns_str }}"
+                                   placeholder="例: bizreach.jp, cr-support.jp">
+                            <div class="form-text">
+                                この媒体のURLに含まれるドメイン（カンマ区切りで複数指定可能）<br>
+                                Chrome拡張機能での自動判定に使用されます
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="sort_order" class="form-label">表示順</label>
+                            <input type="number" class="form-control" id="sort_order" name="sort_order" 
+                                   value="{{ platform.sort_order }}" min="0" max="999">
+                            <div class="form-text">小さい数字ほど上に表示されます</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                                       value="true" {% if platform.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    アクティブ
+                                </label>
+                            </div>
+                            <div class="form-text">非アクティブにすると選択肢に表示されなくなります</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <small class="text-muted">
+                                作成日: {{ platform.created_at[:19].replace('T', ' ') }}<br>
+                                更新日: {{ platform.updated_at[:19].replace('T', ' ') }}
+                            </small>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="/admin/media-platforms" class="btn btn-secondary">キャンセル</a>
+                            <button type="submit" class="btn btn-primary">更新</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

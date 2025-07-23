@@ -87,8 +87,7 @@
         <thead>
             <tr>
                 <th>ジョブID</th>
-                <th>タイプ</th>
-                <th>クライアント</th>
+                <th>ジョブタイトル</th>
                 <th>対象数</th>
                 <th>ステータス</th>
                 <th>進捗</th>
@@ -99,19 +98,14 @@
         <tbody>
             {% for job in jobs %}
             <tr>
-                <td><code>{{ job.id[:8] }}...</code></td>
                 <td>
-                    {% if job.job_type == "ai_matching" %}
-                        <i class="bi bi-cpu"></i> AIマッチング
-                    {% elif job.job_type == "search" %}
-                        <i class="bi bi-search"></i> 検索
-                    {% elif job.job_type == "scrape" %}
-                        <i class="bi bi-download"></i> スクレイピング
+                    {% if job.job_id %}
+                        <span class="badge bg-secondary">{{ job.job_id }}</span>
                     {% else %}
-                        {{ job.job_type }}
+                        <code>{{ job.id[:8] }}...</code>
                     {% endif %}
                 </td>
-                <td>{{ job.client_name or "-" }}</td>
+                <td>{{ job.name or "-" }}</td>
                 <td>
                     {% if job.candidate_count is defined %}
                         <span class="badge bg-info">{{ job.candidate_count }}人</span>
@@ -204,19 +198,29 @@ function executeJob(jobId) {
             }
         })
         .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            
             if (response.ok) {
                 // 成功時はアラート付きでリロード
                 window.location.href = `{{ base_path }}/jobs?success=executed`;
             } else {
-                return response.json().then(data => {
-                    alert(`ジョブの実行に失敗しました: ${data.error || '不明なエラー'}`);
+                // エラーレスポンスの詳細を取得
+                return response.text().then(text => {
+                    console.error('Error response text:', text);
+                    try {
+                        const data = JSON.parse(text);
+                        alert(`ジョブの実行に失敗しました: ${data.error || data.detail || '不明なエラー'}`);
+                    } catch (parseError) {
+                        alert(`ジョブの実行に失敗しました: ${text || '不明なエラー'}`);
+                    }
                     buttons.forEach(btn => btn.disabled = false);
                 });
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('ジョブの実行に失敗しました: ネットワークエラー');
+            console.error('Network error:', error);
+            alert(`ジョブの実行に失敗しました: ネットワークエラー - ${error.message}`);
             buttons.forEach(btn => btn.disabled = false);
         });
     }

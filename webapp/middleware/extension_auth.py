@@ -13,19 +13,30 @@ from core.utils.supabase_client import get_supabase_client
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
 
-# HTTPBearerスキーム
-security = HTTPBearer()
+# HTTPBearerスキーム（auto_error=Falseでオプショナルに）
+security = HTTPBearer(auto_error=False)
 
-async def get_extension_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_extension_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     """拡張機能のトークンから現在のユーザーを取得"""
+    if not credentials:
+        print("Extension auth: No credentials provided")
+        raise HTTPException(
+            status_code=403,
+            detail="認証情報が提供されていません"
+        )
+    
     token = credentials.credentials
+    
+    print(f"Extension auth: Token received: {token[:20]}..." if token else "No token")
     
     try:
         # トークンをデコード
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"Extension auth: Token decoded successfully, type: {payload.get('type')}")
         
         # トークンタイプの確認
         if payload.get("type") != "extension":
+            print(f"Extension auth: Invalid token type: {payload.get('type')}")
             raise HTTPException(
                 status_code=401,
                 detail="無効なトークンタイプです"

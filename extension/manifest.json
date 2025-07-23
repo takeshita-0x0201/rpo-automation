@@ -31,6 +31,9 @@
       "js": [
         "shared/constants.js",
         "shared/utils.js",
+        "shared/scraping-config.js",
+        "content/ui-overlay.js",
+        "content/data-formatter.js",
         "content/scrapers/bizreach.js",
         "content/content.js"
       ],

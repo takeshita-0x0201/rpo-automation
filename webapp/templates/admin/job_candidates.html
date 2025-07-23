@@ -20,7 +20,7 @@
 
 <!-- 統計情報 -->
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">総候補者数</h5>
@@ -28,7 +28,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-white bg-success">
             <div class="card-body">
                 <h5 class="card-title">強く推奨</h5>
@@ -36,7 +36,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-white bg-warning">
             <div class="card-body">
                 <h5 class="card-title">推奨</h5>
@@ -44,11 +44,19 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-white bg-secondary">
             <div class="card-body">
                 <h5 class="card-title">要検討</h5>
                 <p class="card-text display-6">{{ stats.low }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">送客済み</h5>
+                <p class="card-text display-6">{{ stats.sent }}</p>
             </div>
         </div>
     </div>
@@ -94,6 +102,9 @@
                 </th>
                 <th>候補者ID</th>
                 <th>会社名</th>
+                <th>年齢</th>
+                <th>性別</th>
+                <th>経験社数</th>
                 <th width="150">AIスコア</th>
                 <th>推奨度</th>
                 <th>マッチ理由</th>
@@ -112,18 +123,30 @@
                 </td>
                 <td>
                     <code>{{ eval.candidate.candidate_id }}</code>
+                    {% if eval.sent_to_sheet %}
+                    <span class="badge bg-info ms-1">送客済み</span>
+                    {% endif %}
                 </td>
                 <td>
                     {{ eval.candidate.candidate_company or '-' }}
                 </td>
                 <td>
+                    {{ eval.candidate.age or '-' }}
+                </td>
+                <td>
+                    {{ eval.candidate.gender_display or '-' }}
+                </td>
+                <td>
+                    {{ eval.candidate.enrolled_company_count or 0 }}
+                </td>
+                <td>
                     <div class="progress" style="height: 25px;">
                         <div class="progress-bar 
-                             {% if eval.ai_score >= 0.8 %}bg-success
-                             {% elif eval.ai_score >= 0.6 %}bg-warning
+                             {% if eval.score >= 80 %}bg-success
+                             {% elif eval.score >= 60 %}bg-warning
                              {% else %}bg-danger{% endif %}"
-                             style="width: {{ eval.ai_score * 100 }}%">
-                            {{ "%.0f"|format(eval.ai_score * 100) }}%
+                             style="width: {{ eval.score }}%">
+                            {{ eval.score }}%
                         </div>
                     </div>
                 </td>
@@ -133,13 +156,13 @@
                     </span>
                 </td>
                 <td>
-                    {% if eval.match_reasons %}
+                    {% if eval.strengths %}
                         <ul class="mb-0 small">
-                            {% for reason in eval.match_reasons[:2] %}
-                            <li>{{ reason }}</li>
+                            {% for strength in eval.strengths[:2] %}
+                            <li>{{ strength }}</li>
                             {% endfor %}
-                            {% if eval.match_reasons|length > 2 %}
-                            <li class="text-muted">他{{ eval.match_reasons|length - 2 }}件</li>
+                            {% if eval.strengths|length > 2 %}
+                            <li class="text-muted">他{{ eval.strengths|length - 2 }}件</li>
                             {% endif %}
                         </ul>
                     {% else %}
@@ -281,7 +304,7 @@ async function exportToSheets() {
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>処理中...';
     
     try {
-        const response = await fetch(`{{ base_path }}/candidates/job/{{ job.id }}/export-selected`, {
+        const response = await fetch(`/admin/candidates/job/{{ job.id }}/export-selected`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -294,19 +317,17 @@ async function exportToSheets() {
         const result = await response.json();
         
         if (result.success) {
-            alert(result.message);
+            // スプレッドシートURLを開くか確認
+            if (result.spreadsheet_url) {
+                if (confirm(result.message + '\n\nスプレッドシートを開きますか？')) {
+                    window.open(result.spreadsheet_url, '_blank');
+                }
+            } else {
+                alert(result.message);
+            }
             
-            // 選択をクリア
-            selectedCandidates.clear();
-            document.querySelectorAll('.candidate-select:checked').forEach(cb => {
-                cb.checked = false;
-            });
-            updateSelectedCount();
-            
-            // TODO: Google Sheetsへの連携が完了したら、URLを開く処理を追加
-            // if (result.sheets_url) {
-            //     window.open(result.sheets_url, '_blank');
-            // }
+            // ページをリロードして送客済み状態を反映
+            window.location.reload();
         } else {
             alert('エラーが発生しました: ' + (result.error || '不明なエラー'));
         }
@@ -341,6 +362,18 @@ function showCandidateDetail(candidateId) {
                         <th>プラットフォーム</th>
                         <td>${evaluation.candidate.platform}</td>
                     </tr>
+                    <tr>
+                        <th>年齢</th>
+                        <td>${evaluation.candidate.age || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th>性別</th>
+                        <td>${evaluation.candidate.gender_display || '-'}</td>
+                    </tr>
+                    <tr>
+                        <th>経験社数</th>
+                        <td>${evaluation.candidate.enrolled_company_count || 0}</td>
+                    </tr>
                 </table>
             </div>
             <div class="col-md-6">
@@ -348,7 +381,7 @@ function showCandidateDetail(candidateId) {
                 <table class="table table-sm">
                     <tr>
                         <th width="30%">スコア</th>
-                        <td>${Math.round(evaluation.ai_score * 100)}%</td>
+                        <td>${evaluation.score}%</td>
                     </tr>
                     <tr>
                         <th>推奨度</th>
@@ -358,14 +391,9 @@ function showCandidateDetail(candidateId) {
             </div>
         </div>
         
-        <h6 class="mt-3">職務経歴（要約）</h6>
-        <div class="border p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
-            <pre style="white-space: pre-wrap;">${evaluation.candidate.candidate_resume || '情報なし'}</pre>
-        </div>
-        
-        <h6 class="mt-3">マッチ理由</h6>
+        <h6 class="mt-3">強み・マッチ理由</h6>
         <ul>
-            ${evaluation.match_reasons.map(reason => `<li>${reason}</li>`).join('')}
+            ${(evaluation.strengths || []).map(strength => `<li>${strength}</li>`).join('')}
         </ul>
         
         ${evaluation.concerns && evaluation.concerns.length > 0 ? `

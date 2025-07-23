@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}AI評価一覧 - RPO Automation{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">AI評価一覧</h1>
+        <p class="mt-2 text-sm text-gray-600">AIマッチング結果とクライアントフィードバックを管理</p>
+    </div>
+
+    <!-- フィルタ -->
+    <div class="bg-white rounded-lg shadow mb-6 p-4">
+        <form method="get" class="flex flex-wrap gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">要件</label>
+                <select name="requirement_id" class="mt-1 block rounded-md border-gray-300 shadow-sm">
+                    <option value="">全て</option>
+                    {% for req in requirements %}
+                    <option value="{{ req.id }}" {% if request.url.query_params.get('requirement_id') == req.id %}selected{% endif %}>
+                        {{ req.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">クライアント評価</label>
+                <select name="has_feedback" class="mt-1 block rounded-md border-gray-300 shadow-sm">
+                    <option value="">全て</option>
+                    <option value="true" {% if request.url.query_params.get('has_feedback') == 'true' %}selected{% endif %}>
+                        評価済み
+                    </option>
+                    <option value="false" {% if request.url.query_params.get('has_feedback') == 'false' %}selected{% endif %}>
+                        未評価
+                    </option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    フィルタ
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 評価リスト -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-md">
+        <ul class="divide-y divide-gray-200">
+            {% for eval in evaluations %}
+            <li>
+                <a href="/evaluations/{{ eval.id }}" class="block hover:bg-gray-50 px-4 py-4 sm:px-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm font-medium text-indigo-600 truncate">
+                                    {{ eval.candidate.candidate_company }}
+                                </p>
+                                <div class="ml-2 flex-shrink-0 flex">
+                                    <!-- AIスコア -->
+                                    <p class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if eval.score >= 80 %}bg-green-100 text-green-800
+                                        {% elif eval.score >= 60 %}bg-yellow-100 text-yellow-800
+                                        {% else %}bg-red-100 text-red-800{% endif %}">
+                                        AI: {{ eval.score }}/100
+                                    </p>
+                                    <!-- AI推奨度 -->
+                                    <p class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if eval.recommendation == 'A' %}bg-green-100 text-green-800
+                                        {% elif eval.recommendation == 'B' %}bg-blue-100 text-blue-800
+                                        {% elif eval.recommendation == 'C' %}bg-yellow-100 text-yellow-800
+                                        {% else %}bg-red-100 text-red-800{% endif %}">
+                                        推奨: {{ eval.recommendation }}
+                                    </p>
+                                    <!-- クライアント評価 -->
+                                    {% if eval.client_evaluation %}
+                                    <p class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                        {% if eval.client_evaluation == 'A' %}bg-green-100 text-green-800
+                                        {% elif eval.client_evaluation == 'B' %}bg-blue-100 text-blue-800
+                                        {% elif eval.client_evaluation == 'C' %}bg-yellow-100 text-yellow-800
+                                        {% else %}bg-red-100 text-red-800{% endif %}">
+                                        Client: {{ eval.client_evaluation }}
+                                    </p>
+                                    {% else %}
+                                    <p class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                        未評価
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="mt-2 sm:flex sm:justify-between">
+                                <div class="sm:flex">
+                                    <p class="flex items-center text-sm text-gray-500">
+                                        {{ eval.requirement.title }}
+                                    </p>
+                                </div>
+                                <div class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
+                                    <p>
+                                        評価日: {{ eval.evaluated_at | date:"Y-m-d H:i" }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </li>
+            {% empty %}
+            <li class="px-4 py-8 text-center text-gray-500">
+                評価データがありません
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

@@ -23,6 +23,13 @@ def main():
         print("実際のWeb検索を使用する場合: export TAVILY_API_KEY='your-tavily-key'")
         print()
     
+    pinecone_api_key = os.getenv('PINECONE_API_KEY')
+    if not pinecone_api_key:
+        print("警告: PINECONE_API_KEY環境変数が設定されていません")
+        print("RAG（類似ケース検索）機能は無効化されます")
+        print("RAGを使用する場合: export PINECONE_API_KEY='your-pinecone-key'")
+        print()
+    
     # ファイルパス
     resume_file = 'sample_data/resume.txt'
     job_desc_file = 'sample_data/job_description.txt'
@@ -39,6 +46,7 @@ def main():
     print("="*70)
     print("各処理ノードが独立して動作します")
     print(f"Tavily検索: {'有効' if tavily_api_key else 'シミュレーションモード'}")
+    print(f"RAG検索: {'有効' if pinecone_api_key else '無効'}")
     print(f"処理対象ファイル:")
     print(f"  - レジュメ: {resume_file}")
     print(f"  - 求人票: {job_desc_file}")
@@ -48,7 +56,8 @@ def main():
     # マッチャー作成
     matcher = SeparatedDeepResearchMatcher(
         gemini_api_key=gemini_api_key,
-        tavily_api_key=tavily_api_key
+        tavily_api_key=tavily_api_key,
+        pinecone_api_key=pinecone_api_key
     )
     
     try:

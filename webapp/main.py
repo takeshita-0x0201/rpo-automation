@@ -3,6 +3,10 @@ RPO Automation WebApp Main Application
 FastAPI-based web application entry point
 """
 
+# 環境変数を最初に読み込む
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Request, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +19,8 @@ from datetime import datetime
 from typing import Optional
 
 # ルーターのインポート
-from routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings
+from routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings, csv_upload, media_platforms, admin_media_platforms
+from routers import matching_api, job_execution, csv_api, sync_api, sync_monitor, client_evaluations
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -47,6 +52,8 @@ templates = Jinja2Templates(directory=str(base_dir / "templates"))
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(auth_extension.router, tags=["extension-auth"])  # 拡張機能用認証
 app.include_router(extension_api.router, tags=["extension-api"])  # 拡張機能用API
+app.include_router(job_execution.router, tags=["job-execution"])  # ジョブ実行管理
+app.include_router(matching_api.router, tags=["matching"])  # AIマッチング
 app.include_router(requirements.router, prefix="/api/requirements", tags=["requirements"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/results", tags=["results"])
@@ -60,10 +67,31 @@ app.include_router(manager_clients.router, prefix="/manager/clients", tags=["man
 app.include_router(manager_requirements.router, tags=["manager_requirements"])
 # 候補者管理ルーター
 app.include_router(candidates.router, prefix="/candidates", tags=["candidates"])
+# 管理者用候補者ルーター（/admin/candidatesのパスで使用）
+app.include_router(candidates.router, prefix="/admin/candidates", tags=["admin_candidates"])
 # 求人票管理ルーター
 app.include_router(job_postings.router, tags=["job_postings"])
+# CSVアップロードルーター
+app.include_router(csv_upload.router, tags=["csv_upload"])
+# 媒体プラットフォームルーター
+app.include_router(media_platforms.router, prefix="/api", tags=["media_platforms"])
+# 管理者用媒体プラットフォームルーター
+app.include_router(admin_media_platforms.router, tags=["admin_media_platforms"])
+# 評価API (削除済み - client_evaluationsに統合)
+# CSV API
+app.include_router(csv_api.router, tags=["csv"])
+# Sync API
+app.include_router(sync_api.router, tags=["sync"])
+# Sync Monitor
+app.include_router(sync_monitor.router, tags=["sync_monitor"])
+# クライアント評価API
+app.include_router(client_evaluations.router, prefix="/api/client-evaluations", tags=["client_evaluations"])
+
+# ベクトルDB管理（インポートを追加）
+# Vector admin removed - functionality moved to Edge Functions
 
 from routers.auth import get_current_user_from_cookie
+from core.utils.supabase_client import get_supabase_client
 
 # ルートエンドポイント
 @app.get("/", response_class=HTMLResponse)
@@ -120,16 +148,12 @@ async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_curren
         supabase = get_supabase_client()
         candidate_counter = CandidateCounter()
         
-        # ジョブ一覧を取得（クライアント情報と一緒に）
-        jobs_response = supabase.table('jobs').select('*, client:clients(name)').order('created_at', desc=True).execute()
+        # ジョブ一覧を取得（job_idで昇順）
+        jobs_response = supabase.table('jobs').select('*').order('job_id', desc=False).execute()
         jobs = jobs_response.data if jobs_response.data else []
         
-        # クライアント名を展開と対象候補者数を追加
+        # 対象候補者数を追加
         for job in jobs:
-            if 'client' in job and job['client']:
-                job['client_name'] = job['client']['name']
-            else:
-                job['client_name'] = 'N/A'
             
             # 対象候補者数を取得
             if job.get('status') == 'completed':
@@ -169,7 +193,71 @@ async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_curren
         "running_count": running_count,
         "completed_count": completed_count,
         "pending_count": pending_count,
-        "error_count": error_count
+        "error_count": error_count,
+        "base_path": "/admin"  # base_path変数を追加
+    })
+
+@app.get("/admin/jobs/{job_id}/details", response_class=HTMLResponse)
+async def admin_job_details(job_id: str, request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
+    """管理者 - ジョブ詳細"""
+    if not user or user.get("role") != "admin":
+        return RedirectResponse(url="/login?error=Unauthorized", status_code=303)
+    
+    try:
+        from core.utils.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # ジョブ情報を取得（クライアントと採用要件情報も含む）
+        job_response = supabase.table('jobs').select(
+            '*, client:clients(name), requirement:job_requirements(title)'
+        ).eq('id', job_id).execute()
+        
+        if not job_response.data or len(job_response.data) == 0:
+            return templates.TemplateResponse("admin/error.html", {
+                "request": request, 
+                "current_user": user,
+                "error": "指定されたジョブが見つかりません"
+            })
+            
+        job = job_response.data[0]
+        
+        # ステータス履歴を取得
+        status_history = []
+        try:
+            history_response = supabase.table('job_status_history').select('*').eq(
+                'job_id', job_id
+            ).order('created_at', desc=False).execute()  # 古い順に表示
+            status_history = history_response.data if history_response.data else []
+        except Exception as history_error:
+            print(f"Error fetching status history: {history_error}")
+            # 履歴取得エラーは無視して続行
+        
+        # 処理済み候補者数を取得（完了したジョブの場合）
+        processed_candidates = []
+        if job.get('status') == 'completed':
+            try:
+                candidates_response = supabase.table('ai_evaluations').select(
+                    'candidate_id, match_score, evaluation_result'
+                ).eq('job_id', job_id).order('match_score', desc=True).execute()
+                processed_candidates = candidates_response.data if candidates_response.data else []
+            except Exception as eval_error:
+                print(f"Error fetching evaluations: {eval_error}")
+                # 評価取得エラーも無視して続行
+        
+    except Exception as e:
+        print(f"Error fetching job details: {e}")
+        return templates.TemplateResponse("admin/error.html", {
+            "request": request, 
+            "current_user": user,
+            "error": "ジョブ情報の取得に失敗しました"
+        })
+    
+    return templates.TemplateResponse("admin/job_details.html", {
+        "request": request, 
+        "current_user": user,
+        "job": job,
+        "status_history": status_history,
+        "processed_candidates": processed_candidates
     })
 
 @app.get("/admin/jobs/new", response_class=HTMLResponse)
@@ -202,14 +290,6 @@ async def admin_jobs_create(
     job_name: str = Form(...),
     client_id: str = Form(...),
     requirement_id: str = Form(...),
-    data_source: str = Form("latest"),
-    start_date: Optional[str] = Form(None),
-    end_date: Optional[str] = Form(None),
-    matching_threshold: str = Form("high"),
-    output_sheets: bool = Form(False),
-    output_bigquery: bool = Form(False),
-    priority: str = Form("normal"),
-    notify_completion: bool = Form(False),
     user: Optional[dict] = Depends(get_current_user_from_cookie)
 ):
     """管理者 - AIマッチングジョブ作成処理"""
@@ -223,30 +303,60 @@ async def admin_jobs_create(
         
         supabase = get_supabase_client()
         
+        # 次のjob_idを取得
+        try:
+            # 専用関数を使用
+            sequence_response = supabase.rpc('get_next_job_id').execute()
+            next_job_id = sequence_response.data if sequence_response.data else None
+            
+            if not next_job_id:
+                raise Exception("Failed to get next job_id")
+                
+        except Exception as seq_error:
+            print(f"Error with nextval: {seq_error}")
+            # フォールバック: 最大値を取得して次の番号を生成
+            try:
+                max_response = supabase.table('jobs').select('job_id').like('job_id', 'job-%').order('job_id', desc=True).limit(1).execute()
+                
+                if max_response.data and len(max_response.data) > 0 and max_response.data[0].get('job_id'):
+                    last_job_id = max_response.data[0]['job_id']
+                    # job-001 形式から数値を抽出
+                    if isinstance(last_job_id, str) and last_job_id.startswith('job-'):
+                        last_num = int(last_job_id.split('-')[1])
+                        next_num = last_num + 1
+                    else:
+                        next_num = 1
+                else:
+                    next_num = 1
+                
+                next_job_id = f"job-{str(next_num).zfill(3)}"
+                    
+            except Exception as fallback_error:
+                print(f"Fallback also failed: {fallback_error}")
+                # 最終手段: タイムスタンプベース
+                import time
+                next_job_id = f"job-{int(time.time()) % 10000:04d}"
+        
         # ジョブデータを構築
         job_data = {
             "id": str(uuid.uuid4()),
+            "job_id": next_job_id,  # 連番のjob_id
             "job_type": "ai_matching",  # AIマッチング固定
             "client_id": client_id,
             "requirement_id": requirement_id,
             "name": job_name,
             "status": "pending",  # 常にpendingで作成
-            "priority": priority,
+            "priority": "normal",  # デフォルト優先度
             "created_by": user['id'],
             "created_at": datetime.utcnow().isoformat(),
             "parameters": {
-                "data_source": data_source,
-                "matching_threshold": matching_threshold,
-                "output_sheets": output_sheets,
-                "output_bigquery": output_bigquery,
-                "notify_completion": notify_completion
+                "data_source": "latest",  # デフォルト値
+                "matching_threshold": "high",  # デフォルト値
+                "output_sheets": True,  # デフォルト値
+                "output_bigquery": True,  # デフォルト値
+                "notify_completion": True  # デフォルト値
             }
         }
-        
-        # 期間指定の場合は日付を追加
-        if data_source == "date_range" and start_date and end_date:
-            job_data["parameters"]["start_date"] = start_date
-            job_data["parameters"]["end_date"] = end_date
         
         # ジョブを保存
         print(f"Saving job to Supabase: {job_data}")
@@ -261,36 +371,63 @@ async def admin_jobs_create(
             
     except Exception as e:
         print(f"Error creating job: {e}")
-        return RedirectResponse(url="/admin/jobs/new?error=create_failed", status_code=303)
+        import traceback
+        traceback.print_exc()
+        # エラーメッセージをURLセーフにエンコード
+        import urllib.parse
+        error_msg = urllib.parse.quote(str(e))
+        return RedirectResponse(url=f"/admin/jobs/new?error=create_failed&message={error_msg}", status_code=303)
 
 @app.post("/admin/jobs/{job_id}/execute")
-async def admin_job_execute(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
-    """管理者 - ジョブ実行"""
+async def admin_job_execute(job_id: str, request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
+    """管理者 - ジョブ実行（直接実行）"""
     if not user or user.get("role") != "admin":
         return JSONResponse(status_code=403, content={"error": "Unauthorized"})
     
     try:
+        # 直接AIマッチングサービスを呼び出し
+        from webapp.services.ai_matching_service import ai_matching_service
         from core.utils.supabase_client import get_supabase_client
         from datetime import datetime
+        import asyncio
         
         supabase = get_supabase_client()
         
-        # ジョブのステータスを更新
-        result = supabase.table('jobs').update({
-            "status": "running",
-            "started_at": datetime.utcnow().isoformat()
-        }).eq('id', job_id).eq('status', 'pending').execute()
+        # ジョブの存在と権限確認
+        job_response = supabase.table('jobs').select('*, client:clients(*)').eq('id', job_id).single().execute()
         
-        if result.data:
-            # TODO: 実際のジョブ実行処理をキューに追加
-            # ここでは仮実装としてステータス更新のみ
-            return JSONResponse(status_code=200, content={"success": True})
-        else:
-            return JSONResponse(status_code=404, content={"error": "Job not found or already running"})
-            
+        if not job_response.data:
+            return JSONResponse(status_code=404, content={"error": "ジョブが見つかりません"})
+        
+        job = job_response.data
+        
+        # 権限チェック（管理者またはジョブ作成者）
+        if user['role'] != 'admin' and job.get('created_by') != user['id']:
+            return JSONResponse(status_code=403, content={"error": "このジョブを実行する権限がありません"})
+        
+        # ジョブタイプの確認
+        if job.get('job_type') != 'ai_matching':
+            return JSONResponse(status_code=400, content={"error": "AIマッチングジョブではありません"})
+        
+        # ステータスの確認
+        if job.get('status') not in ['pending', 'failed']:
+            return JSONResponse(status_code=400, content={"error": "このジョブは既に実行中または完了しています"})
+        
+        # バックグラウンドでジョブを実行
+        print(f"Starting job execution for job_id: {job_id}")
+        asyncio.create_task(ai_matching_service.process_job(job_id))
+        
+        return JSONResponse(status_code=200, content={
+            "success": True,
+            "message": "ジョブの実行を開始しました",
+            "job_id": job_id
+        })
+                
     except Exception as e:
         print(f"Error executing job: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": f"ジョブの実行開始に失敗しました: {str(e)}"})
 
 @app.post("/admin/jobs/{job_id}/cancel")
 async def admin_job_cancel(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
@@ -412,7 +549,8 @@ async def manager_jobs(request: Request, user: Optional[dict] = Depends(get_curr
         "running_count": running_count,
         "completed_count": completed_count,
         "pending_count": pending_count,
-        "error_count": error_count
+        "error_count": error_count,
+        "base_path": "/manager"  # base_path変数を追加
     })
 
 @app.get("/manager/jobs/new", response_class=HTMLResponse)
@@ -985,6 +1123,104 @@ async def user_history(request: Request, user: Optional[dict] = Depends(get_curr
         "history": history,
         "current_page": current_page,
         "total_pages": total_pages
+    })
+
+# 評価画面
+@app.get("/evaluations", response_class=HTMLResponse)
+async def evaluations_list(
+    request: Request,
+    requirement_id: Optional[str] = None,
+    has_feedback: Optional[str] = None,
+    user: Optional[dict] = Depends(get_current_user_from_cookie)
+):
+    """評価一覧画面"""
+    if not user:
+        return RedirectResponse(url="/login?error=ログインが必要です", status_code=303)
+    
+    # adminまたはmanagerのみアクセス可能
+    if user.get("role") not in ["admin", "manager"]:
+        return templates.TemplateResponse("errors/403.html", {
+            "request": request, 
+            "message": "アクセス権限がありません", 
+            "current_user": user
+        }, status_code=403)
+    
+    supabase = get_supabase_client()
+    
+    # 評価データを取得
+    query = supabase.table('ai_evaluations')\
+        .select("""
+            *,
+            candidate:candidates(candidate_company, candidate_id),
+            requirement:job_requirements(id, title)
+        """)
+    
+    # フィルタ条件
+    if requirement_id:
+        query = query.eq('requirement_id', requirement_id)
+    if has_feedback == 'true':
+        query = query.not_.is_('client_evaluation', 'null')
+    elif has_feedback == 'false':
+        query = query.is_('client_evaluation', 'null')
+    
+    query = query.order('created_at', desc=True).limit(100)
+    response = query.execute()
+    
+    # 要件リストを取得（フィルタ用）
+    req_response = supabase.table('job_requirements')\
+        .select('id, title')\
+        .order('created_at', desc=True)\
+        .execute()
+    
+    return templates.TemplateResponse("evaluations/list.html", {
+        "request": request,
+        "current_user": user,
+        "evaluations": response.data if response.data else [],
+        "requirements": req_response.data if req_response.data else []
+    })
+
+@app.get("/evaluations/{evaluation_id}", response_class=HTMLResponse)
+async def evaluation_detail(
+    request: Request,
+    evaluation_id: str,
+    user: Optional[dict] = Depends(get_current_user_from_cookie)
+):
+    """評価詳細画面"""
+    if not user:
+        return RedirectResponse(url="/login?error=ログインが必要です", status_code=303)
+    
+    # adminまたはmanagerのみアクセス可能
+    if user.get("role") not in ["admin", "manager"]:
+        return templates.TemplateResponse("errors/403.html", {
+            "request": request, 
+            "message": "アクセス権限がありません", 
+            "current_user": user
+        }, status_code=403)
+    
+    supabase = get_supabase_client()
+    
+    # 評価データを詳細情報と共に取得
+    response = supabase.table('ai_evaluations')\
+        .select("""
+            *,
+            candidate:candidates(*),
+            requirement:job_requirements(*, client:clients(*))
+        """)\
+        .eq('id', evaluation_id)\
+        .single()\
+        .execute()
+    
+    if not response.data:
+        return templates.TemplateResponse("errors/404.html", {
+            "request": request, 
+            "message": "評価データが見つかりません", 
+            "current_user": user
+        }, status_code=404)
+    
+    return templates.TemplateResponse("evaluations/detail.html", {
+        "request": request,
+        "current_user": user,
+        "evaluation": response.data
     })
 
 # ヘルスチェックエンドポイント

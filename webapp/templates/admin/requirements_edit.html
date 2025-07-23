@@ -4,76 +4,177 @@
 
 {% block admin_content %}
 <div class="container mt-4">
-    <h1 class="mb-4">採用要件の編集</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>採用要件の編集</h1>
+        <a href="{{ base_path }}/requirements/{{ requirement.id }}/view" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> 詳細に戻る
+        </a>
+    </div>
 
-    {% if request.query_params.error == 'update_failed' %}
+    {% if request.query_params.error %}
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {% if request.query_params.error == 'update_failed' %}
         採用要件の更新に失敗しました。
+        {% elif request.query_params.error == 'validation_failed' %}
+        入力内容に問題があります。
+        {% elif request.query_params.error == 'invalid_json' %}
+        構造化データの形式が正しくありません。
+        {% endif %}
+        {% if request.query_params.message %}
+        <br><strong>詳細:</strong> {{ request.query_params.message }}
+        {% endif %}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     {% endif %}
 
     <div class="card">
         <div class="card-body">
-            <form action="{{ base_path }}/requirements/{{ requirement.id }}/update" method="post">
+            <form action="{{ base_path }}/requirements/{{ requirement.id }}/update" method="post" id="requirements-form">
                 <div class="mb-3">
                     <label for="client_id" class="form-label">クライアント企業</label>
                     <select class="form-select" id="client_id" name="client_id" required>
+                        <option value="" disabled>選択してください</option>
                         {% for client in clients %}
-                        <option value="{{ client.id }}" {% if client.id == requirement.client_id %}selected{% endif %}>{{ client.name }}</option>
+                        <option value="{{ client.id }}" {% if requirement.client_id == client.id %}selected{% endif %}>{{ client.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
+
                 <div class="mb-3">
-                    <label for="title" class="form-label">要件タイトル</label>
-                    <input type="text" class="form-control" id="title" name="title" value="{{ requirement.title }}" required>
+                    <label for="title" class="form-label">ポジション</label>
+                    <input type="text" class="form-control" id="title" name="title" 
+                           value="{{ requirement.title }}" 
+                           placeholder="例: Treasury Specialist / トレジャリースペシャリスト" required>
                 </div>
+
                 <div class="mb-3">
-                    <label for="requirement_text" class="form-label">採用要件（テキスト）</label>
-                    <textarea class="form-control" id="requirement_text" name="requirement_text" rows="10">{{ requirement.description }}</textarea>
+                    <label for="requirement_text" class="form-label">採用要件詳細</label>
+                    <textarea class="form-control" id="requirement_text" name="requirement_text" rows="15" required>{{ requirement.description }}</textarea>
+                    <div class="form-text">求人票と求人メモを含む全ての情報</div>
                 </div>
+
+                {% if requirement.job_description %}
                 <div class="mb-3">
-                    <button type="button" id="structure-btn" class="btn btn-secondary">AIで構造化</button>
+                    <label for="job_description" class="form-label">求人票（参考）</label>
+                    <textarea class="form-control" id="job_description" rows="10" readonly>{{ requirement.job_description }}</textarea>
+                    <div class="form-text">このフィールドは参照用です。編集する場合は「採用要件詳細」を編集してください。</div>
                 </div>
+                {% endif %}
+
+                {% if requirement.memo %}
+                <div class="mb-3">
+                    <label for="memo" class="form-label">求人メモ（参考）</label>
+                    <textarea class="form-control" id="memo" rows="5" readonly>{{ requirement.memo }}</textarea>
+                    <div class="form-text">このフィールドは参照用です。編集する場合は「採用要件詳細」を編集してください。</div>
+                </div>
+                {% endif %}
+
                 <div class="mb-3">
                     <label for="structured_data" class="form-label">構造化データ (JSON)</label>
-                    <textarea class="form-control" id="structured_data" name="structured_data" rows="15">{{ requirement.structured_data | tojson(indent=2) }}</textarea>
+                    <textarea class="form-control" id="structured_data" name="structured_data" rows="10">{{ requirement.structured_data|tojson(indent=2) if requirement.structured_data else '{}' }}</textarea>
+                    <div class="form-text">JSON形式で入力してください。空の場合は {} としてください。</div>
                 </div>
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="true" {% if requirement.is_active %}checked{% endif %}>
-                    <label class="form-check-label" for="is_active">
-                        有効な採用要件
-                    </label>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                               {% if requirement.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="is_active">
+                            有効（チェックを外すと無効化されます）
+                        </label>
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-primary">更新</button>
-                <a href="/admin/requirements" class="btn btn-link">キャンセル</a>
+
+                <div class="mb-3">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <th style="width: 150px;">作成日時:</th>
+                                <td>{{ requirement.created_at[:19].replace('T', ' ') if requirement.created_at else "-" }}</td>
+                            </tr>
+                            <tr>
+                                <th>更新日時:</th>
+                                <td>{{ requirement.updated_at[:19].replace('T', ' ') if requirement.updated_at else "-" }}</td>
+                            </tr>
+                            {% if requirement.requirement_id %}
+                            <tr>
+                                <th>要件ID:</th>
+                                <td>{{ requirement.requirement_id }}</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> 変更を保存
+                        </button>
+                        <a href="{{ base_path }}/requirements/{{ requirement.id }}/view" class="btn btn-link">キャンセル</a>
+                    </div>
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="bi bi-trash"></i> 削除
+                    </button>
+                </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- 削除確認モーダル -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">採用要件の削除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>この採用要件を削除してもよろしいですか？</p>
+                <p class="text-danger">この操作は取り消せません。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <form action="{{ base_path }}/requirements/{{ requirement.id }}/delete" method="post" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">削除する</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-document.getElementById('structure-btn').addEventListener('click', async () => {
-    const text = document.getElementById('requirement_text').value;
-    if (!text) {
-        alert('採用要件テキストを入力してください。');
+// フォーム送信時の検証
+document.getElementById('requirements-form').addEventListener('submit', function(e) {
+    const structuredData = document.getElementById('structured_data').value.trim();
+    
+    // 空の場合は空のJSONオブジェクトに設定
+    if (!structuredData) {
+        document.getElementById('structured_data').value = '{}';
         return;
     }
+    
+    // JSON形式の検証
+    try {
+        JSON.parse(structuredData);
+    } catch (error) {
+        e.preventDefault();
+        alert('構造化データが正しいJSON形式ではありません。\n\nエラー: ' + error.message);
+        return false;
+    }
+});
 
-    const response = await fetch('/api/requirements/structure', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: text })
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-        document.getElementById('structured_data').value = JSON.stringify(result.structured_data, null, 2);
-    } else {
-        alert('構造化に失敗しました: ' + result.error);
+// JSONフィールドのフォーマット支援
+document.getElementById('structured_data').addEventListener('blur', function() {
+    const value = this.value.trim();
+    if (!value) return;
+    
+    try {
+        const parsed = JSON.parse(value);
+        this.value = JSON.stringify(parsed, null, 2);
+    } catch (error) {
+        // エラーの場合は何もしない（ユーザーが編集中の可能性があるため）
     }
 });
 </script>

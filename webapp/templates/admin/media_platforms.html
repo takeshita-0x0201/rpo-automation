@@ -1,0 +1,135 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}媒体プラットフォーム管理 - RPO Automation{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">媒体プラットフォーム管理</h1>
+                <a href="/admin/media-platforms/new" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> 新規作成
+                </a>
+            </div>
+
+            <!-- アラート表示 -->
+            {% if request.query_params.get('success') == 'created' %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                媒体プラットフォームを作成しました。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% elif request.query_params.get('success') == 'updated' %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                媒体プラットフォームを更新しました。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% elif request.query_params.get('success') == 'deleted' %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                媒体プラットフォームを削除しました。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% elif request.query_params.get('error') %}
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                エラーが発生しました。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endif %}
+
+            <!-- 媒体プラットフォーム一覧 -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>表示順</th>
+                                    <th>識別名</th>
+                                    <th>表示名</th>
+                                    <th>説明</th>
+                                    <th>URLパターン</th>
+                                    <th>状態</th>
+                                    <th>作成日</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for platform in platforms %}
+                                <tr>
+                                    <td>{{ platform.sort_order }}</td>
+                                    <td><code>{{ platform.name }}</code></td>
+                                    <td>{{ platform.display_name }}</td>
+                                    <td>{{ platform.description or '-' }}</td>
+                                    <td class="text-muted">
+                                        {% if platform.url_patterns %}
+                                            {% for pattern in platform.url_patterns %}
+                                                {{ pattern }}{% if not loop.last %}, {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if platform.is_active %}
+                                            <span class="badge bg-success">アクティブ</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">非アクティブ</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ platform.created_at[:10] }}</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="/admin/media-platforms/{{ platform.id }}/edit" 
+                                               class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-pencil"></i> 編集
+                                            </a>
+                                            <button type="button" 
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    onclick="deletePlatform('{{ platform.id }}', '{{ platform.display_name }}')">
+                                                <i class="bi bi-trash"></i> 削除
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                
+                                {% if not platforms %}
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted py-4">
+                                        媒体プラットフォームが登録されていません。
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function deletePlatform(platformId, platformName) {
+    if (confirm(`${platformName} を削除してもよろしいですか？`)) {
+        fetch(`/admin/media-platforms/${platformId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = '/admin/media-platforms?success=deleted';
+            } else {
+                alert('削除に失敗しました: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            alert('エラーが発生しました: ' + error);
+        });
+    }
+}
+</script>
+{% endblock %}

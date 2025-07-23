@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/auth/extension", tags=["extension-auth"])
 # JWT設定（auth.pyと同じ設定を使用）
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # 拡張機能用は30分
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 拡張機能用は24時間
 
 class ExtensionLoginRequest(BaseModel):
     email: EmailStr
@@ -92,7 +92,8 @@ async def extension_login(request: ExtensionLoginRequest):
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "user": user_info
+            "user": user_info,
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60  # 秒単位で返す
         }
         
     except HTTPException:

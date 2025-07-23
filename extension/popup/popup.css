@@ -354,6 +354,18 @@ body {
   flex: 1;
 }
 
+/* ページ数設定 */
+.page-count-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-count-hint {
+  font-size: 12px;
+  color: #6c757d;
+}
+
 /* ローディング状態 */
 .loading {
   position: relative;

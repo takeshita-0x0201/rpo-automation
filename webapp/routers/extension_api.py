@@ -43,6 +43,11 @@ class CandidateData(BaseModel):
     # プラットフォーム情報
     platform: str = "bizreach"
     
+    # 追加フィールド
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    enrolled_company_count: Optional[int] = None
+    
     # リレーション情報
     client_id: str
     requirement_id: str
@@ -57,6 +62,7 @@ async def get_clients(
     current_user: dict = Depends(get_extension_user)
 ):
     """クライアント一覧を取得"""
+    print(f"Extension API: Get clients called by user: {current_user.get('email')}")
     try:
         supabase = get_supabase_client()
         
@@ -297,6 +303,11 @@ async def save_candidates_batch(
                 'candidate_resume': candidate.candidate_resume,
                 'platform': candidate.platform,
                 
+                # 追加フィールド
+                'age': candidate.age,
+                'gender': candidate.gender,
+                'enrolled_company_count': candidate.enrolled_company_count,
+                
                 # リレーション
                 'client_id': candidate.client_id,
                 'requirement_id': candidate.requirement_id,
@@ -312,9 +323,13 @@ async def save_candidates_batch(
             
             candidates_data.append(candidate_data)
         
-        # candidatesテーブルにバッチ挿入
+        # candidatesテーブルにバッチ挿入（upsertを使用して重複を回避）
         if candidates_data:
-            insert_result = supabase.table('candidates').insert(candidates_data).execute()
+            # upsertを使用: 既存のレコードは更新、新規は挿入
+            insert_result = supabase.table('candidates').upsert(
+                candidates_data,
+                on_conflict='candidate_id,platform'  # 重複チェックするカラム
+            ).execute()
             
             if not insert_result.data:
                 raise HTTPException(

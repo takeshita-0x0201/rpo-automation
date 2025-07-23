@@ -151,7 +151,7 @@ class ApiClient {
     
     // トークンを保存
     if (response.access_token) {
-      const expiresIn = response.expires_in || 3600; // デフォルト1時間
+      const expiresIn = response.expires_in || 86400; // デフォルト24時間
       await chrome.storage.local.set({
         rpo_auth_token: response.access_token,
         rpo_token_expiry: Date.now() + (expiresIn * 1000),
@@ -240,6 +240,19 @@ class ApiClient {
   // 採用要件詳細取得
   async getRequirement(requirementId) {
     return this.get(`/api/extension/requirements/${requirementId}`);
+  }
+
+  // 媒体プラットフォーム一覧取得
+  async getMediaPlatforms() {
+    console.log('ApiClient: Getting media platforms');
+    try {
+      const result = await this.get('/api/media_platforms');
+      console.log('ApiClient: Media platforms received:', result);
+      return result.platforms || [];
+    } catch (error) {
+      console.error('ApiClient: Failed to get media platforms:', error);
+      throw error;
+    }
   }
 
   // エラーレポート送信

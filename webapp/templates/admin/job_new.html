@@ -17,6 +17,9 @@
 {% if request.query_params.get('error') == 'create_failed' %}
 <div class="alert alert-danger alert-dismissible fade show" role="alert">
     <i class="bi bi-exclamation-circle"></i> ジョブの作成に失敗しました。入力内容を確認してください。
+    {% if request.query_params.get('message') %}
+    <br><strong>詳細:</strong> {{ request.query_params.get('message') }}
+    {% endif %}
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 {% elif error %}
@@ -33,10 +36,11 @@
         </div>
         <div class="card-body">
             <div class="mb-3">
-                <label for="job_name" class="form-label">ジョブ名 <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="job_name" name="job_name" required
-                       placeholder="例：株式会社A - エンジニア採用 AIマッチング">
-                <div class="form-text">ジョブを識別しやすい名前を付けてください</div>
+                <label class="form-label">ジョブ名</label>
+                <input type="text" class="form-control" id="job_name_display" readonly
+                       placeholder="クライアントと採用要件を選択すると自動的に設定されます">
+                <input type="hidden" id="job_name" name="job_name">
+                <div class="form-text">クライアント名 - 採用要件名の形式で自動生成されます</div>
             </div>
 
             <div class="row">
@@ -54,105 +58,12 @@
                 <div class="col-md-6">
                     <div class="mb-3">
                         <label for="requirement_id" class="form-label">採用要件 <span class="text-danger">*</span></label>
-                        <select class="form-select" id="requirement_id" name="requirement_id" required disabled>
+                        <select class="form-select" id="requirement_id" name="requirement_id" required disabled onchange="updateJobName()">
                             <option value="">クライアントを選択してください</option>
                         </select>
                         <div class="form-text">選択したクライアントの採用要件が表示されます</div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- AIマッチング設定 -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">AIマッチング設定</h5>
-        </div>
-        <div class="card-body">
-            <div class="mb-3">
-                <label class="form-label">候補者データソース <span class="text-danger">*</span></label>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="data_source" id="data_source_latest" 
-                           value="latest" checked onchange="updateDataSource()">
-                    <label class="form-check-label" for="data_source_latest">
-                        最新の収集データを使用
-                    </label>
-                    <div class="form-text">Chrome拡張機能で収集した最新の候補者データを使用します</div>
-                </div>
-                <div class="form-check mt-2">
-                    <input class="form-check-input" type="radio" name="data_source" id="data_source_date" 
-                           value="date_range" onchange="updateDataSource()">
-                    <label class="form-check-label" for="data_source_date">
-                        期間を指定してデータを選択
-                    </label>
-                </div>
-            </div>
-
-            <div class="row" id="date_range_options" style="display: none;">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="start_date" class="form-label">開始日</label>
-                        <input type="date" class="form-control" id="start_date" name="start_date">
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="end_date" class="form-label">終了日</label>
-                        <input type="date" class="form-control" id="end_date" name="end_date">
-                    </div>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="matching_threshold" class="form-label">マッチング閾値</label>
-                <select class="form-select" id="matching_threshold" name="matching_threshold">
-                    <option value="high" selected>高（80%以上）</option>
-                    <option value="medium">中（60%以上）</option>
-                    <option value="low">低（40%以上）</option>
-                    <option value="all">全て（閾値なし）</option>
-                </select>
-                <div class="form-text">AIが判定するマッチング度の最低閾値を設定します</div>
-            </div>
-
-            <div class="mb-3">
-                <label for="output_format" class="form-label">結果出力形式</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="output_sheets" name="output_sheets" checked>
-                    <label class="form-check-label" for="output_sheets">
-                        Google Sheetsに出力
-                    </label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="output_bigquery" name="output_bigquery" checked>
-                    <label class="form-check-label" for="output_bigquery">
-                        BigQueryに保存
-                    </label>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- その他の設定 -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">その他の設定</h5>
-        </div>
-        <div class="card-body">
-            <div class="mb-3">
-                <label for="priority" class="form-label">優先度</label>
-                <select class="form-select" id="priority" name="priority">
-                    <option value="normal" selected>通常</option>
-                    <option value="high">高</option>
-                    <option value="low">低</option>
-                </select>
-            </div>
-
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" id="notify_completion" name="notify_completion" checked>
-                <label class="form-check-label" for="notify_completion">
-                    完了時に通知を送信
-                </label>
             </div>
         </div>
     </div>
@@ -166,25 +77,6 @@
 </form>
 
 <script>
-// データソースに応じてオプションを表示/非表示
-function updateDataSource() {
-    const dataSource = document.querySelector('input[name="data_source"]:checked').value;
-    const dateRangeOptions = document.getElementById('date_range_options');
-    
-    if (dataSource === 'date_range') {
-        dateRangeOptions.style.display = 'flex';
-        // デフォルトで過去7日間を設定
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 7);
-        
-        document.getElementById('start_date').value = startDate.toISOString().slice(0, 10);
-        document.getElementById('end_date').value = endDate.toISOString().slice(0, 10);
-    } else {
-        dateRangeOptions.style.display = 'none';
-    }
-}
-
 // クライアント選択時に採用要件を更新
 async function updateRequirements() {
     const clientId = document.getElementById('client_id').value;
@@ -193,6 +85,7 @@ async function updateRequirements() {
     if (!clientId) {
         requirementSelect.disabled = true;
         requirementSelect.innerHTML = '<option value="">クライアントを選択してください</option>';
+        updateJobName(); // ジョブ名をクリア
         return;
     }
     
@@ -220,9 +113,35 @@ async function updateRequirements() {
         }
         
         requirementSelect.disabled = false;
+        updateJobName(); // ジョブ名を更新
     } catch (error) {
         console.error('Failed to load requirements:', error);
         requirementSelect.innerHTML = '<option value="">読み込みエラー</option>';
+    }
+}
+
+// ジョブ名を自動生成
+function updateJobName() {
+    const clientSelect = document.getElementById('client_id');
+    const requirementSelect = document.getElementById('requirement_id');
+    const jobNameDisplay = document.getElementById('job_name_display');
+    const jobNameHidden = document.getElementById('job_name');
+    
+    const clientName = clientSelect.selectedOptions[0]?.text;
+    const requirementName = requirementSelect.selectedOptions[0]?.text;
+    
+    if (clientName && clientName !== '選択してください' && 
+        requirementName && requirementName !== '選択してください' && 
+        requirementName !== 'クライアントを選択してください' && 
+        requirementName !== '読み込み中...' &&
+        requirementName !== '採用要件がありません' &&
+        requirementName !== '読み込みエラー') {
+        const jobName = `${clientName} - ${requirementName}`;
+        jobNameDisplay.value = jobName;
+        jobNameHidden.value = jobName;
+    } else {
+        jobNameDisplay.value = '';
+        jobNameHidden.value = '';
     }
 }
 

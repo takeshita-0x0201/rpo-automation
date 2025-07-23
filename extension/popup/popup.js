@@ -13,16 +13,19 @@ const elements = {
   statusIndicator: document.getElementById('statusIndicator'),
   userName: document.getElementById('userName'),
   
+  // クライアント選択
+  clientSelect: document.getElementById('clientSelect'),
+  
   // 媒体選択
   platformSelect: document.getElementById('platformSelect'),
   
   // 採用要件選択
   requirementGroup: document.getElementById('requirementGroup'),
   requirementSelect: document.getElementById('requirementSelect'),
-  requirementDetails: document.getElementById('requirementDetails'),
-  clientName: document.getElementById('clientName'),
-  requirementPosition: document.getElementById('requirementPosition'),
-  requirementSkills: document.getElementById('requirementSkills'),
+  
+  // ページ数設定
+  pageCountGroup: document.getElementById('pageCountGroup'),
+  pageCountInput: document.getElementById('pageCountInput'),
   
   // スクレイピング制御
   startBtn: document.getElementById('startBtn'),
@@ -55,9 +58,12 @@ const elements = {
 let state = {
   isAuthenticated: false,
   user: null,
+  clients: [],
+  selectedClient: null,
   selectedPlatform: null,
   requirements: [],
   selectedRequirement: null,
+  pageCount: 5,
   scrapingStatus: SCRAPING_STATUS.IDLE,
   progress: {
     current: 0,
@@ -67,27 +73,106 @@ let state = {
   }
 };
 
-// 初期表示用：全ての採用要件を読み込んで表示
-async function loadAllRequirements() {
+// 初期表示用：初期データを読み込む
+async function loadInitialData() {
   try {
-    // 採用要件セクションを表示
-    if (elements.requirementGroup) {
-      elements.requirementGroup.style.display = 'flex'; // ← blockではなくflex
-    }
+    // クライアント一覧を読み込み
+    await loadClients();
     
-    // 採用要件を読み込み
-    await loadRequirements();
+    // 媒体プラットフォームを読み込み
+    await loadMediaPlatforms();
+  } catch (error) {
+    DebugUtil.error('Failed to load initial data:', error);
+  }
+}
+
+// クライアント一覧の読み込み
+async function loadClients() {
+  try {
+    console.log('Loading clients...');
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.GET_CLIENTS
+    });
     
-    // 現在のタブを確認して、対応する媒体を自動選択
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.url) {
-      if (tab.url.includes('bizreach.jp') && elements.platformSelect) {
-        elements.platformSelect.value = 'bizreach';
-        state.selectedPlatform = 'bizreach';
-      }
+    console.log('Clients response:', response);
+    
+    if (response && response.success && response.clients) {
+      state.clients = response.clients;
+      
+      // selectをクリア
+      elements.clientSelect.innerHTML = '<option value="">選択してください</option>';
+      
+      console.log(`Adding ${response.clients.length} clients to select`);
+      
+      // クライアントを追加
+      response.clients.forEach(client => {
+        console.log('Adding client:', client.id, client.name);
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = client.name;
+        elements.clientSelect.appendChild(option);
+      });
+    } else {
+      console.error('Failed to load clients:', response);
+      DebugUtil.error('Failed to load clients:', response?.error);
     }
   } catch (error) {
-    DebugUtil.error('Failed to load all requirements:', error);
+    console.error('Exception in loadClients:', error);
+    DebugUtil.error('Failed to load clients:', error);
+  }
+}
+
+// 媒体プラットフォームの読み込み
+async function loadMediaPlatforms() {
+  try {
+    console.log('Loading media platforms...');
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.GET_MEDIA_PLATFORMS
+    });
+    
+    console.log('Media platforms response:', response);
+    
+    if (response && response.success && response.platforms) {
+      // selectをクリア
+      elements.platformSelect.innerHTML = '<option value="">選択してください</option>';
+      
+      console.log(`Adding ${response.platforms.length} platforms to select`);
+      
+      // プラットフォームを追加
+      response.platforms.forEach(platform => {
+        console.log('Adding platform:', platform.name, platform.display_name);
+        const option = document.createElement('option');
+        option.value = platform.name;
+        option.textContent = platform.display_name;
+        elements.platformSelect.appendChild(option);
+      });
+      
+      // 現在のタブを確認して、対応する媒体を自動選択
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url) {
+        // URLパターンマッチング
+        for (const platform of response.platforms) {
+          if (platform.url_patterns && Array.isArray(platform.url_patterns)) {
+            const matched = platform.url_patterns.some(pattern => 
+              tab.url.includes(pattern)
+            );
+            if (matched && elements.platformSelect) {
+              elements.platformSelect.value = platform.name;
+              state.selectedPlatform = platform.name;
+              // 選択が変更されたことを通知
+              await handlePlatformSelect({ target: elements.platformSelect });
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      console.error('Failed to load media platforms:', response);
+      DebugUtil.error('Failed to load media platforms:', response?.error);
+    }
+  } catch (error) {
+    console.error('Exception in loadMediaPlatforms:', error);
+    DebugUtil.error('Failed to load media platforms:', error);
   }
 }
 
@@ -111,8 +196,8 @@ async function initialize() {
     if (isAuthenticated) {
       await loadUserData();
       showMainSection();
-      // ログイン後、自動的に採用要件を読み込む
-      await loadAllRequirements();
+      // ログイン後、自動的に初期データを読み込む
+      await loadInitialData();
     } else {
       showLoginSection();
     }
@@ -128,8 +213,20 @@ async function initialize() {
 // 認証状態の確認
 async function checkAuthStatus() {
   try {
+    // デバッグ: ストレージの内容を確認
+    const storageData = await chrome.storage.local.get(['rpo_auth_token', 'rpo_token_expiry']);
+    console.log('Storage data check:');
+    console.log('- Has token:', !!storageData.rpo_auth_token);
+    console.log('- Token expiry:', storageData.rpo_token_expiry);
+    console.log('- Expiry date:', storageData.rpo_token_expiry ? new Date(storageData.rpo_token_expiry).toLocaleString() : 'not set');
+    console.log('- Current time:', new Date().toLocaleString());
+    console.log('- Is expired:', storageData.rpo_token_expiry ? Date.now() > storageData.rpo_token_expiry : 'no expiry set');
+    
     const token = await TokenUtil.getToken();
-    if (!token) return false;
+    if (!token) {
+      console.log('Token not found or expired');
+      return false;
+    }
     
     // バックグラウンドスクリプトに認証状態を確認
     const response = await chrome.runtime.sendMessage({
@@ -177,43 +274,103 @@ async function handlePlatformSelect(e) {
   // 現在のタブが対応するプラットフォームか確認
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.url) {
-    const isCorrectPlatform = checkPlatformMatch(platform, tab.url);
+    const isCorrectPlatform = await checkPlatformMatch(platform, tab.url);
     
     if (!isCorrectPlatform) {
-      showError(`現在のページは${getPlatformName(platform)}ではありません`);
+      const platformName = await getPlatformName(platform);
+      showError(`現在のページは${platformName}ではありません`);
       elements.requirementGroup.style.display = 'none';
       elements.startBtn.disabled = true;
       return;
     }
   }
   
-  // 採用要件を読み込み
-  elements.requirementGroup.style.display = 'flex'; // ← blockではなくflex
-  await loadRequirements();
+  // クライアントが選択されている場合は採用要件を読み込み
+  if (state.selectedClient) {
+    await loadRequirements();
+  }
 }
 
 // プラットフォームのマッチング確認
-function checkPlatformMatch(platform, url) {
-  switch (platform) {
-    case 'bizreach':
-      return url.includes('cr-support.jp');
-    case 'direct':
-      return url.includes('directrecruiting.jp');
-    case 'green':
-      return url.includes('green-japan.com');
-    default:
-      return false;
+async function checkPlatformMatch(platform, url) {
+  try {
+    // 媒体プラットフォーム情報を取得
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.GET_MEDIA_PLATFORMS
+    });
+    
+    if (response && response.success && response.platforms) {
+      const platformData = response.platforms.find(p => p.name === platform);
+      if (platformData && platformData.url_patterns && Array.isArray(platformData.url_patterns)) {
+        return platformData.url_patterns.some(pattern => url.includes(pattern));
+      }
+    }
+    
+    // フォールバック（デフォルト値）
+    switch (platform) {
+      case 'bizreach':
+        return url.includes('cr-support.jp') || url.includes('bizreach.jp');
+      case 'direct':
+        return url.includes('directrecruiting.jp');
+      case 'green':
+        return url.includes('green-japan.com');
+      default:
+        return false;
+    }
+  } catch (error) {
+    console.error('Failed to check platform match:', error);
+    return false;
   }
 }
 
 // プラットフォーム名を取得
-function getPlatformName(platform) {
+async function getPlatformName(platform) {
+  try {
+    // 媒体プラットフォーム情報を取得
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.GET_MEDIA_PLATFORMS
+    });
+    
+    if (response && response.success && response.platforms) {
+      const platformData = response.platforms.find(p => p.name === platform);
+      if (platformData) {
+        return platformData.display_name;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to get platform name:', error);
+  }
+  
+  // フォールバック
   const names = {
     'bizreach': 'BizReach',
     'direct': 'Direct Recruiting',
     'green': 'Green'
   };
   return names[platform] || platform;
+}
+
+// クライアント選択処理
+async function handleClientSelect(e) {
+  const clientId = e.target.value;
+  
+  if (!clientId) {
+    state.selectedClient = null;
+    // 採用要件をクリア
+    elements.requirementSelect.innerHTML = '<option value="">選択してください</option>';
+    elements.requirementGroup.style.display = 'none';
+    elements.startBtn.disabled = true;
+    return;
+  }
+  
+  state.selectedClient = state.clients.find(c => c.id === clientId);
+  console.log('Selected client:', state.selectedClient);
+  
+  // 選択したクライアントをストレージに保存
+  await chrome.storage.local.set({ selected_client: state.selectedClient });
+  
+  // 採用要件を読み込み
+  await loadRequirements();
 }
 
 // イベントリスナーの設定
@@ -226,6 +383,11 @@ function setupEventListeners() {
   // ログアウト
   if (elements.logoutBtn) {
     elements.logoutBtn.addEventListener('click', handleLogout);
+  }
+  
+  // クライアント選択
+  if (elements.clientSelect) {
+    elements.clientSelect.addEventListener('change', handleClientSelect);
   }
   
   // 媒体選択
@@ -250,6 +412,17 @@ function setupEventListeners() {
   }
   if (elements.stopBtn) {
     elements.stopBtn.addEventListener('click', handleStop);
+  }
+  
+  // ページ数設定
+  if (elements.pageCountInput) {
+    elements.pageCountInput.addEventListener('change', (e) => {
+      state.pageCount = parseInt(e.target.value) || 5;
+      // 値の範囲を制限
+      if (state.pageCount < 1) state.pageCount = 1;
+      if (state.pageCount > 100) state.pageCount = 100;
+      e.target.value = state.pageCount;
+    });
   }
   
   // 設定リンク
@@ -293,8 +466,8 @@ async function handleLogin(e) {
       // 画面を切り替え
       showMainSection();
       
-      // 採用要件を読み込み
-      await loadAllRequirements();
+      // 初期データを読み込み
+      await loadInitialData();
     } else {
       showError(response.error || 'ログインに失敗しました');
     }
@@ -349,7 +522,8 @@ async function handleStart() {
         platform: state.selectedPlatform,
         clientId: state.selectedRequirement.client_id,
         clientName: state.selectedRequirement.client_name || state.selectedRequirement.client?.name,
-        requirementId: state.selectedRequirement.id
+        requirementId: state.selectedRequirement.id,
+        pageLimit: state.pageCount
       }
     });
     
@@ -507,22 +681,32 @@ function enableScrapingControls() {
   }
 }
 
-// 採用要件の読み込み（全ての採用要件を取得）
+// 採用要件の読み込み（クライアントIDでフィルタリング）
 async function loadRequirements() {
   try {
     showLoading(true);
     elements.requirementSelect.innerHTML = '<option value="">選択してください</option>';
-    elements.requirementDetails.style.display = 'none';
     
+    if (!state.selectedClient) {
+      elements.requirementGroup.style.display = 'none';
+      return;
+    }
+    
+    // クライアントIDで採用要件を取得
     const response = await chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.GET_ALL_REQUIREMENTS
+      type: MESSAGE_TYPES.GET_REQUIREMENTS,
+      data: { clientId: state.selectedClient.id }
     });
     
     DebugUtil.log('Get requirements response:', response);
     
     if (response && response.success && response.requirements) {
       state.requirements = response.requirements;
-      console.log('Loaded requirements:', state.requirements);
+      console.log('Loaded requirements for client:', state.selectedClient.name, state.requirements);
+      
+      // 採用要件セクションを表示
+      elements.requirementGroup.style.display = 'flex';
+      
       updateRequirementSelect();
     } else if (response && response.error) {
       DebugUtil.error('Failed to load requirements:', response.error);
@@ -543,9 +727,7 @@ function updateRequirementSelect() {
     option.value = requirement.id;
     // タイトルを表示
     const title = requirement.title || '';
-    const isActive = requirement.is_active || requirement.status === 'active';
-    const status = isActive ? 'アクティブ' : '非アクティブ';
-    option.textContent = `${title} (${status})`;
+    option.textContent = title;
     elements.requirementSelect.appendChild(option);
   });
 }
@@ -556,8 +738,8 @@ async function handleRequirementSelect(e) {
   
   if (!requirementId) {
     state.selectedRequirement = null;
-    elements.requirementDetails.style.display = 'none';
     elements.startBtn.disabled = true;
+    elements.pageCountGroup.style.display = 'none';
     return;
   }
   
@@ -574,34 +756,93 @@ async function handleRequirementSelect(e) {
       client_name: requirement.client_name
     });
     
-    // 詳細表示
-    elements.clientName.textContent = requirement.client_name || requirement.client?.name || '-';
-    elements.requirementPosition.textContent = requirement.title || '-';
-    
-    // structured_dataから必須スキルを取得
-    let requiredSkills = '-';
-    if (requirement.structured_data) {
-      try {
-        const data = typeof requirement.structured_data === 'string' 
-          ? JSON.parse(requirement.structured_data) 
-          : requirement.structured_data;
-        requiredSkills = data.required_skills?.join(', ') || '-';
-      } catch (e) {
-        console.error('Failed to parse structured_data:', e);
-      }
-    }
-    elements.requirementSkills.textContent = requiredSkills;
-    elements.requirementDetails.style.display = 'block';
+    // ページ数設定を表示
+    elements.pageCountGroup.style.display = 'flex';
     
     // 選択した媒体と現在のタブが一致しているか確認
     if (state.selectedPlatform) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && tab.url && checkPlatformMatch(state.selectedPlatform, tab.url)) {
+      if (tab && tab.url && await checkPlatformMatch(state.selectedPlatform, tab.url)) {
         elements.startBtn.disabled = false;
       }
     }
   }
 }
 
+// メッセージリスナーを設定（進捗更新を受け取る）
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'SCRAPING_PROGRESS_UPDATE') {
+    updateScrapingProgress(message.data);
+  }
+});
+
+// スクレイピング進捗を更新
+function updateScrapingProgress(progressData) {
+  if (progressData.status) {
+    // ステータスに応じてUIを更新
+    switch (progressData.status) {
+      case 'running':
+        updateScrapingStatus(SCRAPING_STATUS.RUNNING);
+        elements.statusMessage.textContent = progressData.message || '収集中...';
+        break;
+      case 'paused':
+        updateScrapingStatus(SCRAPING_STATUS.PAUSED);
+        elements.statusMessage.textContent = progressData.message || '一時停止中';
+        break;
+      case 'waiting':
+      case 'break':
+        elements.statusMessage.textContent = progressData.message || '待機中...';
+        break;
+      case 'completed':
+        updateScrapingStatus(SCRAPING_STATUS.COMPLETED);
+        elements.statusMessage.textContent = progressData.message || '完了';
+        elements.statistics.style.display = 'block';
+        break;
+      case 'stopped':
+        updateScrapingStatus(SCRAPING_STATUS.IDLE);
+        elements.statusMessage.textContent = progressData.message || '停止しました';
+        break;
+      case 'error':
+        updateScrapingStatus(SCRAPING_STATUS.ERROR);
+        elements.statusMessage.textContent = progressData.message || 'エラーが発生しました';
+        break;
+    }
+  }
+  
+  // 進捗数値を更新
+  if (progressData.totalCandidates !== undefined) {
+    elements.progressCurrent.textContent = progressData.totalCandidates;
+    elements.progressTotal.textContent = progressData.totalCandidates;
+    elements.statTotal.textContent = progressData.totalCandidates;
+    elements.statSuccess.textContent = progressData.totalCandidates;
+    elements.statError.textContent = '0';
+    
+    // 統計情報を表示
+    if (progressData.totalCandidates > 0) {
+      elements.statistics.style.display = 'block';
+    }
+  }
+  
+  // 現在のページ番号を表示（メッセージに含まれる）
+  if (progressData.currentPage !== undefined && progressData.message) {
+    // メッセージはすでにページ情報を含んでいる
+  }
+}
+
+// ポップアップが開いた時に保存された進捗を読み込む
+async function loadSavedProgress() {
+  const { scraping_progress } = await chrome.storage.local.get(['scraping_progress']);
+  if (scraping_progress && scraping_progress.lastUpdated) {
+    // 5分以内の進捗なら表示
+    if (Date.now() - scraping_progress.lastUpdated < 5 * 60 * 1000) {
+      updateScrapingProgress(scraping_progress);
+    }
+  }
+}
+
 // 初期化実行
-document.addEventListener('DOMContentLoaded', initialize);
+document.addEventListener('DOMContentLoaded', () => {
+  initialize().then(() => {
+    loadSavedProgress();
+  });
+});

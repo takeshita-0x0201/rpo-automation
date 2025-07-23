@@ -55,15 +55,21 @@
         <button id="logoutBtn" class="btn-link">ログアウト</button>
       </div>
 
+      <!-- クライアント選択 -->
+      <div class="form-group">
+        <label for="clientSelect">クライアント</label>
+        <select id="clientSelect" class="form-input">
+          <option value="">選択してください</option>
+          <!-- 動的に読み込まれます -->
+        </select>
+      </div>
+
       <!-- 媒体選択 -->
       <div class="form-group">
         <label for="platformSelect">媒体</label>
         <select id="platformSelect" class="form-input">
           <option value="">選択してください</option>
-          <option value="bizreach">BizReach</option>
-          <!-- 将来的に追加 -->
-          <!-- <option value="direct">Direct Recruiting</option> -->
-          <!-- <option value="green">Green</option> -->
+          <!-- 動的に読み込まれます -->
         </select>
       </div>
 
@@ -73,19 +79,22 @@
         <select id="requirementSelect" class="form-input">
           <option value="">選択してください</option>
         </select>
-        <div class="requirement-details" id="requirementDetails" style="display: none;">
-          <div class="detail-item">
-            <span class="detail-label">クライアント:</span>
-            <span id="clientName" class="detail-value">-</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">ポジション:</span>
-            <span id="requirementPosition" class="detail-value">-</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">必須スキル:</span>
-            <span id="requirementSkills" class="detail-value">-</span>
-          </div>
+      </div>
+
+      <!-- ページ数設定 -->
+      <div class="form-group" id="pageCountGroup" style="display: none;">
+        <label for="pageCountInput">取得ページ数</label>
+        <div class="page-count-controls">
+          <input 
+            type="number" 
+            id="pageCountInput" 
+            class="form-input" 
+            min="1" 
+            max="100" 
+            value="5" 
+            style="width: 80px;"
+          >
+          <span class="page-count-hint">ページ（1-100）</span>
         </div>
       </div>
 

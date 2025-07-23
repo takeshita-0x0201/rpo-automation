@@ -25,7 +25,13 @@
         <tbody>
             {% for req in requirements %}
             <tr>
-                <td>{{ req.job_requirements_id }}</td>
+                <td>
+                    {% if req.requirement_id %}
+                        <span class="badge bg-secondary">{{ req.requirement_id }}</span>
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
                 <td>{{ req.client_name or "未設定" }}</td>
                 <td>{{ req.title }}</td>
                 <td>{{ req.created_at[:10] if req.created_at else "-" }}</td>

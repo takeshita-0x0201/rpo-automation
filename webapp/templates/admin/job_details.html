@@ -1,0 +1,350 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}ジョブ詳細 - {{ job.name }}{% endblock %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>ジョブ詳細</h1>
+    <a href="{{ base_path }}/jobs" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> ジョブ一覧に戻る
+    </a>
+</div>
+
+<!-- ジョブ基本情報 -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">基本情報</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-borderless">
+                    <tr>
+                        <th style="width: 150px;">ジョブID:</th>
+                        <td>
+                            {% if job.job_id %}
+                                <span class="badge bg-secondary">{{ job.job_id }}</span>
+                            {% else %}
+                                <code>{{ job.id }}</code>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>ジョブ名:</th>
+                        <td>{{ job.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>クライアント:</th>
+                        <td>{{ job.client.name if job.client else "-" }}</td>
+                    </tr>
+                    <tr>
+                        <th>採用要件:</th>
+                        <td>{{ job.requirement.title if job.requirement else "-" }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-borderless">
+                    <tr>
+                        <th style="width: 150px;">ステータス:</th>
+                        <td>
+                            {% if job.status == "running" %}
+                                <span class="badge bg-primary">
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    実行中
+                                </span>
+                            {% elif job.status == "completed" %}
+                                <span class="badge bg-success">完了</span>
+                            {% elif job.status == "failed" %}
+                                <span class="badge bg-danger">エラー</span>
+                            {% elif job.status == "pending" %}
+                                <span class="badge bg-warning">待機中</span>
+                            {% elif job.status == "cancelled" %}
+                                <span class="badge bg-secondary">キャンセル</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ job.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>作成日時:</th>
+                        <td>{{ job.created_at[:19].replace('T', ' ') if job.created_at else "-" }}</td>
+                    </tr>
+                    <tr>
+                        <th>開始日時:</th>
+                        <td>{{ job.started_at[:19].replace('T', ' ') if job.started_at else "-" }}</td>
+                    </tr>
+                    <tr>
+                        <th>完了日時:</th>
+                        <td>{{ job.completed_at[:19].replace('T', ' ') if job.completed_at else "-" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        {% if job.status == "running" %}
+        <div class="mt-3">
+            <div class="d-flex justify-content-between mb-2">
+                <span>進捗状況</span>
+                <span>{{ job.progress or 0 }}%</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" 
+                     style="width: {{ job.progress or 0 }}%"
+                     aria-valuenow="{{ job.progress or 0 }}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ジョブパラメータ -->
+{% if job.parameters %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">実行パラメータ</h5>
+    </div>
+    <div class="card-body">
+        <table class="table table-sm">
+            <tbody>
+                {% for key, value in job.parameters.items() %}
+                <tr>
+                    <th style="width: 200px;">{{ key }}:</th>
+                    <td>
+                        {% if value is boolean %}
+                            {% if value %}
+                                <i class="bi bi-check-circle text-success"></i> 有効
+                            {% else %}
+                                <i class="bi bi-x-circle text-danger"></i> 無効
+                            {% endif %}
+                        {% else %}
+                            {{ value }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 処理結果（完了したジョブの場合） -->
+{% if job.status == "completed" and processed_candidates %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">処理結果サマリー</h5>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <h3 class="text-primary">{{ processed_candidates|length }}</h3>
+                <p class="text-muted">処理済み候補者数</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-success">{{ processed_candidates|selectattr("evaluation_result", "equalto", "A")|list|length }}</h3>
+                <p class="text-muted">A評価</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-warning">{{ processed_candidates|selectattr("evaluation_result", "equalto", "B")|list|length }}</h3>
+                <p class="text-muted">B評価</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-secondary">{{ processed_candidates|selectattr("evaluation_result", "equalto", "C")|list|length }}</h3>
+                <p class="text-muted">C評価</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- エラー情報（エラーの場合） -->
+{% if job.status == "failed" and job.error_message %}
+<div class="card mb-4 border-danger">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0">エラー情報</h5>
+    </div>
+    <div class="card-body">
+        <pre class="text-danger">{{ job.error_message }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<!-- ステータス履歴 -->
+{% if status_history %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">ステータス履歴</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>時刻</th>
+                        <th>ステータス</th>
+                        <th>メッセージ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for history in status_history %}
+                    <tr>
+                        <td class="text-nowrap">{{ history.created_at[:19].replace('T', ' ') }}</td>
+                        <td>
+                            {% if history.status == "pending" %}
+                                <span class="badge bg-warning">待機中</span>
+                            {% elif history.status == "in_progress" or history.status == "running" %}
+                                <span class="badge bg-primary">実行中</span>
+                            {% elif history.status == "completed" %}
+                                <span class="badge bg-success">完了</span>
+                            {% elif history.status == "failed" %}
+                                <span class="badge bg-danger">エラー</span>
+                            {% elif history.status == "cancelled" %}
+                                <span class="badge bg-secondary">キャンセル</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ history.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ history.message or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- アクションボタン -->
+<div class="d-flex justify-content-end gap-2">
+    {% if job.status == "pending" %}
+    <button type="button" class="btn btn-success" onclick="executeJob('{{ job.id }}')">
+        <i class="bi bi-play-circle"></i> 実行
+    </button>
+    {% elif job.status == "running" %}
+    <button type="button" class="btn btn-danger" onclick="cancelJob('{{ job.id }}')">
+        <i class="bi bi-stop-circle"></i> 停止
+    </button>
+    {% endif %}
+    
+    {% if job.status == "completed" %}
+    <a href="/admin/candidates/job/{{ job.id }}/candidates" class="btn btn-success">
+        <i class="bi bi-people"></i> 候補者一覧を見る
+    </a>
+    {% endif %}
+    
+    {% if job.status in ["completed", "failed", "cancelled"] %}
+    <button type="button" class="btn btn-danger" onclick="deleteJob('{{ job.id }}')">
+        <i class="bi bi-trash"></i> 削除
+    </button>
+    {% endif %}
+</div>
+
+<script>
+function executeJob(jobId) {
+    if (confirm('このジョブを実行してもよろしいですか？')) {
+        // APIを呼び出し
+        fetch(`/api/jobs/${jobId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => Promise.reject(err));
+            }
+            return response.json();
+        })
+        .then(data => {
+            alert('ジョブの実行を開始しました');
+            location.reload();
+        })
+        .catch(error => {
+            alert('エラー: ' + (error.detail || 'ジョブの実行に失敗しました'));
+        });
+        return;
+        
+        // 以下は古いコード（後で削除）
+        fetch(`{{ base_path }}/jobs/${jobId}/execute`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの実行に失敗しました: ${data.error || '不明なエラー'}`);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの実行に失敗しました: ネットワークエラー');
+        });
+    }
+}
+
+function cancelJob(jobId) {
+    if (confirm('このジョブを停止してもよろしいですか？')) {
+        fetch(`{{ base_path }}/jobs/${jobId}/cancel`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの停止に失敗しました: ${data.error || '不明なエラー'}`);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの停止に失敗しました: ネットワークエラー');
+        });
+    }
+}
+
+function deleteJob(jobId) {
+    if (confirm('このジョブを削除してもよろしいですか？\n※この操作は取り消せません。')) {
+        fetch(`{{ base_path }}/jobs/${jobId}/delete`, { 
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = '{{ base_path }}/jobs?success=deleted';
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブの削除に失敗しました: ${data.error || '不明なエラー'}`);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブの削除に失敗しました: ネットワークエラー');
+        });
+    }
+}
+
+// 実行中のジョブの場合は自動リロード
+{% if job.status == "running" %}
+setTimeout(() => {
+    window.location.reload();
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}

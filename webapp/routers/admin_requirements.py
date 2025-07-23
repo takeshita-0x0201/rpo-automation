@@ -30,7 +30,7 @@ async def requirements_list(request: Request, user=Depends(get_current_admin_use
             clients_map = {str(client['id']): client['name'] for client in clients_response.data}
 
         # 2. 採用要件一覧を取得
-        req_response = db.table('job_requirements').select('*').order('created_at', desc=True).execute()
+        req_response = db.table('job_requirements').select('*').order('requirement_id', desc=False).execute()
         
         if not req_response.data:
             requirements = []
@@ -81,18 +81,36 @@ async def create_requirement(
     """採用要件を作成"""
     try:
         # requirement_idの連番を生成
+        requirement_id = None
         try:
             result = db.rpc('get_next_requirement_id').execute()
             if result.data:
                 requirement_id = result.data
             else:
-                # フォールバック: 関数が使えない場合
+                raise Exception("Failed to generate requirement_id")
+        except Exception as e:
+            print(f"Error generating requirement_id with RPC: {e}")
+            # フォールバック: 最大値を取得して次の番号を生成
+            try:
+                max_response = db.table('job_requirements').select('requirement_id').like('requirement_id', 'req-%').order('requirement_id', desc=True).limit(1).execute()
+                
+                if max_response.data and len(max_response.data) > 0:
+                    last_id = max_response.data[0]['requirement_id']
+                    # req-001 形式から数値を抽出
+                    if last_id and last_id.startswith('req-'):
+                        last_num = int(last_id.split('-')[1])
+                        next_num = last_num + 1
+                    else:
+                        next_num = 1
+                else:
+                    next_num = 1
+                
+                requirement_id = f"req-{str(next_num).zfill(3)}"
+            except Exception as fallback_error:
+                print(f"Fallback also failed: {fallback_error}")
+                # 最終手段: タイムスタンプベース
                 import uuid
                 requirement_id = f"req-temp-{str(uuid.uuid4())[:8]}"
-        except Exception as e:
-            # フォールバック
-            import uuid
-            requirement_id = f"req-temp-{str(uuid.uuid4())[:8]}"
         
         # structured_dataが空文字列の場合のハンドリング
         if not structured_data.strip():
@@ -190,18 +208,21 @@ async def edit_requirement(
 ):
     """採用要件編集ページ"""
     try:
-        req_response = db.table('job_requirements').select('*').eq('id', requirement_id).single().execute()
-        if req_response.error:
+        # 採用要件を取得
+        req_response = db.table('job_requirements').select('*').eq('id', requirement_id).execute()
+        if not req_response.data or len(req_response.data) == 0:
             raise HTTPException(status_code=404, detail="Requirement not found")
-        requirement = req_response.data
+        requirement = req_response.data[0]
 
-        clients_response = db.table('clients').select('id, name').eq('is_active', True).execute()
-        if clients_response.error:
-            raise HTTPException(status_code=500, detail=str(clients_response.error))
-        clients = clients_response.data
+        # クライアント一覧を取得
+        clients_response = db.table('clients').select('id, name').eq('is_active', True).order('name').execute()
+        clients = clients_response.data if clients_response.data else []
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+        print(f"Error in edit_requirement: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     return templates.TemplateResponse("admin/requirements_edit.html", {
         "request": request,
@@ -225,20 +246,35 @@ async def update_requirement(
 ):
     """採用要件を更新"""
     try:
+        # structured_dataのパース
+        if not structured_data.strip():
+            parsed_structured_data = {}
+        else:
+            try:
+                parsed_structured_data = json.loads(structured_data)
+            except json.JSONDecodeError as e:
+                return RedirectResponse(
+                    url=f"/admin/requirements/{requirement_id}/edit?error=invalid_json",
+                    status_code=303
+                )
+        
         update_data = {
             "client_id": client_id,
             "title": title,
             "description": requirement_text,
-            "structured_data": structured_data,
+            "structured_data": parsed_structured_data,
             "is_active": is_active,
             "updated_at": datetime.now().isoformat()
         }
+        
         response = db.table('job_requirements').update(update_data).eq('id', requirement_id).execute()
-        if response.error:
-            raise HTTPException(status_code=500, detail=str(response.error))
+        
+        if not response.data:
+            raise Exception("Failed to update requirement")
 
         return RedirectResponse(url=f"/admin/requirements/{requirement_id}/view?success=updated", status_code=303)
     except Exception as e:
+        print(f"Error updating requirement: {e}")
         return RedirectResponse(url=f"/admin/requirements/{requirement_id}/edit?error=update_failed", status_code=303)
 
 @router.post("/admin/requirements/{requirement_id}/delete")

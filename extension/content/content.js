@@ -7,21 +7,14 @@ let scraper = null;
 
 // 初期化
 async function initialize() {
-  console.log('RPO Automation Content Script: 初期化開始');
-  
   // 現在のドメインを確認
   const currentDomain = window.location.hostname;
-  console.log('Current domain:', currentDomain);
   
   // BizReachの場合、スクレイパーを初期化
   if (currentDomain.includes('cr-support.jp') || currentDomain.includes('bizreach')) {
-    console.log('BizReach detected');
     if (typeof BizReachScraper !== 'undefined') {
       scraper = new BizReachScraper();
       await scraper.initialize();
-      console.log('BizReach scraper initialized');
-    } else {
-      console.error('BizReachScraper not found');
     }
   }
   
@@ -32,8 +25,6 @@ async function initialize() {
 // メッセージリスナーの設定
 function setupMessageListener() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('Content script received message:', request);
-    console.log('Message type:', request.type);
     
     switch (request.type) {
       case 'PING':
@@ -64,7 +55,6 @@ function setupMessageListener() {
         return true; // 非同期レスポンスを示す
         
       default:
-        console.error('Unknown message type:', request.type);
         sendResponse({ error: 'Unknown message type: ' + request.type });
     }
   });
@@ -73,29 +63,38 @@ function setupMessageListener() {
 // スクレイピング開始処理
 async function handleStartScraping(data) {
   try {
-    console.log('Starting scraping:', data);
+    console.log('handleStartScraping called with:', data);
     
     if (!scraper) {
       throw new Error('スクレイパーが初期化されていません');
     }
     
+    // ストレージから最新のセッション情報を取得
+    const storageData = await chrome.storage.local.get(['rpo_current_session']);
+    console.log('Session from storage:', storageData.rpo_current_session);
+    
+    // dataとストレージの情報をマージ
+    const sessionData = {
+      ...data,
+      ...(storageData.rpo_current_session || {})
+    };
+    
+    console.log('Merged session data:', sessionData);
+    
     isScrapingActive = true;
-    scrapingSession = data;
+    scrapingSession = sessionData;
     
     // UIオーバーレイを表示
     showScrapingOverlay();
     
-    // 現在のページをスクレイピング（ループなし版）
-    const result = await scraper.scrapeCurrentPage();
+    // スクレイピングを開始（BizReachScraperのstartScrapingメソッドを使用）
+    const result = await scraper.startScraping(sessionData);
     
     if (result.success) {
-      console.log('Scraping completed:', result);
-      updateOverlayStatus(`完了: ${result.count}件の候補者を取得しました`);
+      return { success: true, message: 'スクレイピングを開始しました' };
     } else {
-      throw new Error(result.message);
+      throw new Error(result.error || 'スクレイピングの開始に失敗しました');
     }
-    
-    return { success: true, message: result.message };
     
   } catch (error) {
     console.error('Scraping error:', error);
@@ -304,6 +303,29 @@ function hideScrapingOverlay() {
   if (overlay) {
     overlay.remove();
   }
+}
+
+// スクレイピング一時停止処理
+function handlePauseScraping() {
+  if (scraper && scraper.pause) {
+    scraper.pause();
+  }
+}
+
+// スクレイピング再開処理
+function handleResumeScraping() {
+  if (scraper && scraper.resume) {
+    scraper.resume();
+  }
+}
+
+// スクレイピング停止処理
+function handleStopScraping() {
+  if (scraper && scraper.stop) {
+    scraper.stop();
+  }
+  isScrapingActive = false;
+  hideScrapingOverlay();
 }
 
 // 初期化実行

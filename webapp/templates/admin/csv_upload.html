@@ -1,0 +1,523 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}クライアント評価アップロード - 管理画面{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .hover-shadow {
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .hover-shadow:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    
+    .upload-type-card.selected .card {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+    
+    .upload-area {
+        border: 3px dashed #dee2e6;
+        border-radius: 0.5rem;
+        padding: 4rem 2rem;
+        text-align: center;
+        background-color: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .upload-area:hover {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    
+    .upload-area.dragover {
+        border-color: #0d6efd;
+        background-color: #cfe2ff;
+        transform: scale(1.02);
+    }
+    
+    .file-input {
+        display: none;
+    }
+    
+    .upload-icon {
+        font-size: 4rem;
+        color: #6c757d;
+        margin-bottom: 1rem;
+    }
+    
+    .upload-text {
+        font-size: 1.25rem;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+    
+    .upload-hint {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .file-info {
+        display: none;
+    }
+    
+    .result-stat {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+    }
+    
+    .template-card {
+        transition: all 0.3s ease;
+    }
+    
+    .template-card:hover {
+        background-color: #f8f9fa;
+        transform: translateY(-2px);
+    }
+    
+    .card-header {
+        font-weight: 600;
+    }
+    
+    .select-type-btn {
+        transition: all 0.3s ease;
+    }
+    
+    .upload-type-card.selected .select-type-btn {
+        background-color: #198754;
+        border-color: #198754;
+    }
+    
+    #selectedTypeDisplay {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .display-4 {
+        font-weight: 600;
+    }
+    
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<div class="upload-container">
+                <!-- ページヘッダー -->
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">クライアント評価アップロード</h1>
+                    <div class="btn-toolbar mb-2 mb-md-0">
+                        <a href="/admin" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-arrow-left"></i> ダッシュボードに戻る
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 説明セクション -->
+                <div class="alert alert-info mb-4">
+                    <h5 class="alert-heading"><i class="fas fa-info-circle"></i> クライアント評価アップロードについて</h5>
+                    <p class="mb-2">このページでは、クライアントによる候補者評価結果をCSVファイルで一括アップロードできます。</p>
+                    <hr>
+                    <p class="mb-0">
+                        <strong>アップロード内容：</strong>
+                        どの求人における、どの候補者が、どんな評価をクライアントから受けたか
+                    </p>
+                </div>
+
+                <!-- ファイルアップロード -->
+                <div class="card mb-4" id="uploadSection">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-upload"></i> クライアント評価CSVファイルをアップロード</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- CSV形式説明 -->
+                        <div class="alert alert-warning mb-4">
+                            <h6 class="alert-heading"><i class="fas fa-file-csv"></i> CSVファイル形式</h6>
+                            <p class="mb-0">以下のカラムを含むCSVファイルをアップロードしてください：</p>
+                            <ul class="mb-0 mt-2">
+                                <li><strong>candidate_id</strong>: 候補者ID（必須）</li>
+                                <li><strong>requirement_id</strong>: 求人ID（必須）</li>
+                                <li><strong>client_evaluation</strong>: クライアント評価（A/B/C/D）（必須）</li>
+                                <li><strong>client_feedback</strong>: クライアントからのフィードバック（任意）</li>
+                                <li><strong>evaluation_date</strong>: 評価日（YYYY-MM-DD形式）（任意）</li>
+                            </ul>
+                        </div>
+
+                        <!-- アップロードエリア -->
+                        <div class="upload-area" id="uploadArea">
+                            <input type="file" id="fileInput" class="file-input" accept=".csv">
+                            <div class="upload-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <p class="upload-text font-semibold">CSVファイルをドラッグ＆ドロップ</p>
+                            <p class="upload-hint">または、クリックしてファイルを選択</p>
+                        </div>
+                        <!-- ファイル情報 -->
+                        <div class="file-info mt-3" id="fileInfo">
+                            <div class="alert alert-success">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">選択されたファイル:</h6>
+                                        <p class="mb-1" id="fileName"></p>
+                                        <small class="text-muted" id="fileSize"></small>
+                                    </div>
+                                    <button class="btn btn-sm btn-danger" id="cancelBtn">
+                                        <i class="fas fa-times"></i> キャンセル
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- アップロードボタン -->
+                        <div class="mt-3 text-center" id="uploadBtnSection" style="display: none;">
+                            <button class="btn btn-primary btn-lg" id="uploadBtn">
+                                <i class="fas fa-upload"></i> アップロード開始
+                            </button>
+                        </div>
+                    </div>
+                </div>
+    
+                <!-- 進捗表示 -->
+                <div class="card mb-4" id="progressContainer" style="display: none;">
+                    <div class="card-body">
+                        <h5 class="mb-3">アップロード進行中...</h5>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>処理状況</span>
+                            <span id="progressText">0%</span>
+                        </div>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressFill" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+    
+                <!-- 結果表示 -->
+                <div class="card mb-4" id="resultsContainer" style="display: none;">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-check-circle"></i> アップロード完了</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center mb-4">
+                            <div class="col-md-4">
+                                <div class="result-stat">
+                                    <i class="fas fa-file-csv fa-2x text-primary mb-2"></i>
+                                    <h6 class="text-muted">総レコード数</h6>
+                                    <h2 class="display-4" id="totalCount">0</h2>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="result-stat">
+                                    <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                                    <h6 class="text-muted">成功</h6>
+                                    <h2 class="display-4 text-success" id="successCount">0</h2>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="result-stat">
+                                    <i class="fas fa-exclamation-circle fa-2x text-danger mb-2"></i>
+                                    <h6 class="text-muted">エラー</h6>
+                                    <h2 class="display-4 text-danger" id="errorCount">0</h2>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- エラー詳細 -->
+                        <div class="alert alert-danger" id="errorDetails" style="display: none;">
+                            <h5 class="alert-heading"><i class="fas fa-exclamation-triangle"></i> エラー詳細</h5>
+                            <ul class="mb-0" id="errorList">
+                            </ul>
+                        </div>
+                        
+                        <!-- 新規アップロードボタン -->
+                        <div class="text-center mt-4">
+                            <button class="btn btn-primary btn-lg" id="newUploadBtn">
+                                <i class="fas fa-redo"></i> 新規アップロード
+                            </button>
+                        </div>
+                    </div>
+                </div>
+    
+                <!-- テンプレートダウンロード -->
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="fas fa-file-download"></i> CSVテンプレート</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">
+                            評価結果のCSVテンプレートをダウンロードして、必要な項目を入力してください。
+                        </p>
+                        
+                        <!-- テンプレートの内容説明 -->
+                        <div class="alert alert-light mb-4">
+                            <h6 class="alert-heading"><i class="fas fa-info-circle"></i> テンプレートの内容</h6>
+                            <ul class="mb-0">
+                                <li>サンプルデータ（4件）が含まれています</li>
+                                <li>各評価レベル（A/B/C/D）の記入例があります</li>
+                                <li>備考欄に記入方法の説明が含まれています</li>
+                                <li>必要に応じてサンプルデータを削除・編集してご利用ください</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="text-center">
+                            <div class="template-card p-4 border rounded d-inline-block">
+                                <i class="fas fa-chart-line fa-3x text-info mb-3"></i>
+                                <h5>評価結果テンプレート</h5>
+                                <p class="text-muted mb-3">候補者ID、求人ID、クライアント評価など</p>
+                                <button class="btn btn-primary" onclick="downloadTemplate()">
+                                    <i class="fas fa-download"></i> テンプレートをダウンロード
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+</div>
+
+<script>
+    // DOM要素
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const uploadSection = document.getElementById('uploadSection');
+    const uploadBtnSection = document.getElementById('uploadBtnSection');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const totalCount = document.getElementById('totalCount');
+    const successCount = document.getElementById('successCount');
+    const errorCount = document.getElementById('errorCount');
+    const errorDetails = document.getElementById('errorDetails');
+    const errorList = document.getElementById('errorList');
+    const newUploadBtn = document.getElementById('newUploadBtn');
+    const selectedTypeDisplay = document.getElementById('selectedTypeDisplay');
+    const selectedTypeName = document.getElementById('selectedTypeName');
+    
+    let selectedFile = null;
+    let selectedType = 'client-evaluations'; // 固定値に設定
+    
+    // クリックでファイル選択
+    uploadArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // ドラッグ&ドロップ
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === 'text/csv') {
+            handleFileSelect(files[0]);
+        } else {
+            alert('CSVファイルを選択してください。');
+        }
+    });
+    
+    // ファイル選択時
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+    
+    // ファイル選択処理
+    function handleFileSelect(file) {
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        fileInfo.style.display = 'block';
+        uploadBtnSection.style.display = 'block';
+        uploadArea.style.display = 'none';
+    }
+    
+    // ファイルサイズフォーマット
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        else if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+        else return Math.round(bytes / 1048576) + ' MB';
+    }
+    
+    // キャンセル
+    cancelBtn.addEventListener('click', resetUpload);
+    
+    
+    // アップロード実行
+    uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) {
+            alert('ファイルを選択してください');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('type', selectedType);
+        
+        // UI更新
+        uploadBtn.disabled = true;
+        uploadSection.style.display = 'none';
+        progressContainer.style.display = 'block';
+        
+        // 進捗アニメーション
+        animateProgress();
+        
+        try {
+            const response = await fetch('/api/csv/upload', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                }
+            });
+            
+            const result = await response.json();
+            
+            // 進捗アニメーションを停止
+            if (window.progressInterval) {
+                clearInterval(window.progressInterval);
+            }
+            
+            if (response.ok) {
+                // 100%に到達
+                progressFill.style.width = '100%';
+                progressText.textContent = '100%';
+                
+                setTimeout(() => {
+                    showResults(result);
+                }, 500);
+            } else {
+                throw new Error(result.detail || 'アップロードに失敗しました');
+            }
+        } catch (error) {
+            if (window.progressInterval) {
+                clearInterval(window.progressInterval);
+            }
+            alert('エラー: ' + error.message);
+            resetUpload();
+        }
+    });
+    
+    // 結果表示
+    function showResults(result) {
+        progressContainer.style.display = 'none';
+        resultsContainer.style.display = 'block';
+        
+        totalCount.textContent = result.total || 0;
+        successCount.textContent = result.success || 0;
+        errorCount.textContent = result.errors || 0;
+        
+        if (result.error_details && result.error_details.length > 0) {
+            errorDetails.style.display = 'block';
+            errorList.innerHTML = result.error_details
+                .map(err => `<li>行 ${err.row}: ${err.message}</li>`)
+                .join('');
+        }
+    }
+    
+    // 新規アップロード
+    newUploadBtn.addEventListener('click', resetUpload);
+    
+    // リセット
+    function resetUpload() {
+        selectedFile = null;
+        fileInput.value = '';
+        uploadBtn.disabled = false;
+        
+        uploadArea.style.display = 'block';
+        fileInfo.style.display = 'none';
+        uploadBtnSection.style.display = 'none';
+        progressContainer.style.display = 'none';
+        resultsContainer.style.display = 'none';
+        errorDetails.style.display = 'none';
+        
+        progressFill.style.width = '0%';
+        progressText.textContent = '0%';
+        
+        // ページトップにスクロール
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    // 進捗アニメーション
+    function animateProgress() {
+        let progress = 0;
+        const interval = setInterval(() => {
+            if (progress < 90) {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressFill.style.width = progress + '%';
+                progressText.textContent = Math.round(progress) + '%';
+            }
+        }, 300);
+        
+        // APIレスポンスでクリア
+        window.progressInterval = interval;
+    }
+    
+    // テンプレートダウンロード関数
+    async function downloadTemplate() {
+        try {
+            // Cookieベースの認証を使用するため、credentials: 'include'を追加
+            const response = await fetch('/api/csv/template/client-evaluations', {
+                method: 'GET',
+                credentials: 'include'  // Cookieを含める
+            });
+            
+            if (!response.ok) {
+                throw new Error('テンプレートのダウンロードに失敗しました');
+            }
+            
+            // レスポンスをBlobとして取得
+            const blob = await response.blob();
+            
+            // ダウンロード用のリンクを作成
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'client_evaluations_template.csv';
+            
+            // ダウンロードを実行
+            document.body.appendChild(a);
+            a.click();
+            
+            // クリーンアップ
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,456 @@
+{% extends "admin/_base_admin.html" %}
+
+{% block title %}Pinecone同期モニター - 管理画面{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<style>
+    .status-card {
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .status-pending {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+    }
+    
+    .status-synced {
+        background-color: #d4edda;
+        border-left: 4px solid #28a745;
+    }
+    
+    .status-error {
+        background-color: #f8d7da;
+        border-left: 4px solid #dc3545;
+    }
+    
+    .metric-box {
+        text-align: center;
+        padding: 1rem;
+        border-radius: 8px;
+        background-color: #f8f9fa;
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .metric-label {
+        color: #6c757d;
+        font-size: 0.875rem;
+    }
+    
+    .sync-log-entry {
+        border-bottom: 1px solid #dee2e6;
+        padding: 0.75rem 0;
+    }
+    
+    .sync-log-entry:last-child {
+        border-bottom: none;
+    }
+    
+    .refresh-indicator {
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Pinecone同期モニター</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <button class="btn btn-sm btn-outline-secondary me-2" onclick="refreshStatus()">
+                <i class="fas fa-sync-alt" id="refreshIcon"></i> 更新
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="triggerManualSync()">
+                <i class="fas fa-play"></i> 手動同期
+            </button>
+        </div>
+    </div>
+
+    <!-- ステータスサマリー -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="metric-box">
+                <p class="metric-value text-warning" id="pendingCount">-</p>
+                <p class="metric-label">未同期</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-box">
+                <p class="metric-value text-success" id="syncedCount">-</p>
+                <p class="metric-label">同期済み</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-box">
+                <p class="metric-value text-danger" id="errorCount">-</p>
+                <p class="metric-label">エラー</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-box">
+                <p class="metric-value text-info" id="syncRate">-</p>
+                <p class="metric-label">同期率</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最終同期情報 -->
+    <div class="alert alert-info">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="fas fa-info-circle"></i>
+                <strong>最終同期:</strong> <span id="lastSyncTime">未確認</span>
+            </div>
+            <div>
+                <small class="text-muted">自動同期は10分毎に実行されます</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 最近のエラー -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> 最近のエラー</h5>
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    <div id="errorList">
+                        <p class="text-muted">エラーを読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 同期ログ -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> 同期ログ</h5>
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    <div id="syncLogList">
+                        <p class="text-muted">ログを読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 詳細テーブル -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">未同期評価一覧</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="pendingTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>候補者</th>
+                            <th>求人</th>
+                            <th>評価</th>
+                            <th>評価日</th>
+                            <th>リトライ回数</th>
+                            <th>エラー</th>
+                            <th>アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">データを読み込み中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 手動同期モーダル -->
+<div class="modal fade" id="manualSyncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">手動同期の実行</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="batchSize" class="form-label">バッチサイズ</label>
+                    <input type="number" class="form-control" id="batchSize" value="50" min="1" max="100">
+                    <div class="form-text">一度に処理する評価の数（1-100）</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <button type="button" class="btn btn-primary" onclick="executeSyncWithParams()">
+                    <i class="fas fa-play"></i> 同期実行
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// グローバル変数
+let syncModal = null;
+
+// 初期化
+document.addEventListener('DOMContentLoaded', function() {
+    syncModal = new bootstrap.Modal(document.getElementById('manualSyncModal'));
+    refreshStatus();
+    
+    // 30秒ごとに自動更新
+    setInterval(refreshStatus, 30000);
+});
+
+// ステータス更新
+async function refreshStatus() {
+    const refreshIcon = document.getElementById('refreshIcon');
+    refreshIcon.classList.add('refresh-indicator');
+    
+    try {
+        // 同期ステータスを取得
+        const response = await fetch('/api/sync/status', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+        
+        if (!response.ok) throw new Error('Failed to fetch status');
+        
+        const data = await response.json();
+        
+        // メトリクス更新
+        document.getElementById('pendingCount').textContent = data.pending_count || 0;
+        document.getElementById('syncedCount').textContent = data.synced_count || 0;
+        document.getElementById('errorCount').textContent = data.error_count || 0;
+        
+        // 同期率計算
+        const total = (data.pending_count || 0) + (data.synced_count || 0);
+        const syncRate = total > 0 ? ((data.synced_count / total) * 100).toFixed(1) : 100;
+        document.getElementById('syncRate').textContent = syncRate + '%';
+        
+        // 最終同期時刻
+        if (data.last_sync_at) {
+            const lastSync = new Date(data.last_sync_at);
+            document.getElementById('lastSyncTime').textContent = lastSync.toLocaleString('ja-JP');
+        }
+        
+        // エラーリストと未同期リストを更新
+        await updateErrorList();
+        await updatePendingList();
+        await updateSyncLogs();
+        
+    } catch (error) {
+        console.error('Error refreshing status:', error);
+    } finally {
+        refreshIcon.classList.remove('refresh-indicator');
+    }
+}
+
+// エラーリスト更新
+async function updateErrorList() {
+    try {
+        const response = await fetch('/api/sync/errors?limit=10', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+        
+        const errors = await response.json();
+        const errorList = document.getElementById('errorList');
+        
+        if (errors.length === 0) {
+            errorList.innerHTML = '<p class="text-success"><i class="fas fa-check-circle"></i> エラーはありません</p>';
+            return;
+        }
+        
+        errorList.innerHTML = errors.map(error => `
+            <div class="sync-log-entry">
+                <div class="d-flex justify-content-between">
+                    <strong>評価 #${error.id}</strong>
+                    <small class="text-muted">${new Date(error.created_at).toLocaleString('ja-JP')}</small>
+                </div>
+                <p class="mb-0 text-danger small">${error.sync_error}</p>
+                <small class="text-muted">リトライ: ${error.sync_retry_count}/3</small>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error fetching error list:', error);
+    }
+}
+
+// 同期ログ更新
+async function updateSyncLogs() {
+    try {
+        const response = await fetch('/api/sync/logs?limit=10', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+        
+        const logs = await response.json();
+        const logList = document.getElementById('syncLogList');
+        
+        if (logs.length === 0) {
+            logList.innerHTML = '<p class="text-muted">ログがありません</p>';
+            return;
+        }
+        
+        logList.innerHTML = logs.map(log => {
+            const statusBadge = log.status === 'success' 
+                ? '<span class="badge bg-success">成功</span>'
+                : '<span class="badge bg-danger">失敗</span>';
+                
+            return `
+                <div class="sync-log-entry">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            ${statusBadge}
+                            <strong>${log.trigger_source}</strong>
+                        </div>
+                        <small class="text-muted">${new Date(log.completed_at).toLocaleString('ja-JP')}</small>
+                    </div>
+                    ${log.details ? `
+                        <small class="text-muted">
+                            処理: ${log.details.results?.processed || 0}件, 
+                            成功: ${log.details.results?.successful || 0}件
+                        </small>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Error fetching sync logs:', error);
+    }
+}
+
+// 未同期リスト更新
+async function updatePendingList() {
+    try {
+        const response = await fetch('/api/sync/pending?limit=20', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+        
+        const pending = await response.json();
+        const tbody = document.querySelector('#pendingTable tbody');
+        
+        if (pending.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-success">全ての評価が同期済みです</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = pending.map(item => `
+            <tr>
+                <td>${item.id}</td>
+                <td>${item.candidate_name || 'N/A'}</td>
+                <td>${item.requirement_title || 'N/A'}</td>
+                <td><span class="badge bg-${getEvaluationColor(item.client_evaluation)}">${item.client_evaluation}</span></td>
+                <td>${new Date(item.evaluation_date || item.created_at).toLocaleDateString('ja-JP')}</td>
+                <td>${item.sync_retry_count}</td>
+                <td>${item.sync_error ? `<small class="text-danger">${item.sync_error.substring(0, 50)}...</small>` : '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="syncSingleEvaluation('${item.id}')">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error fetching pending list:', error);
+    }
+}
+
+// 評価色の取得
+function getEvaluationColor(evaluation) {
+    const colors = {
+        'A': 'success',
+        'B': 'primary',
+        'C': 'warning',
+        'D': 'danger'
+    };
+    return colors[evaluation] || 'secondary';
+}
+
+// 手動同期の表示
+function triggerManualSync() {
+    syncModal.show();
+}
+
+// 手動同期の実行
+async function executeSyncWithParams() {
+    const batchSize = document.getElementById('batchSize').value;
+    syncModal.hide();
+    
+    try {
+        const response = await fetch('/api/sync/manual', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ batchSize: parseInt(batchSize) })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`同期が完了しました。\n処理: ${result.results.processed}件\n成功: ${result.results.successful}件`);
+            refreshStatus();
+        } else {
+            alert('同期に失敗しました: ' + (result.error || 'Unknown error'));
+        }
+        
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+
+// 個別評価の同期
+async function syncSingleEvaluation(evaluationId) {
+    if (!confirm('この評価を同期しますか？')) return;
+    
+    try {
+        const response = await fetch(`/api/sync/evaluation/${evaluationId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('同期が完了しました');
+            refreshStatus();
+        } else {
+            alert('同期に失敗しました: ' + (result.error || 'Unknown error'));
+        }
+        
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

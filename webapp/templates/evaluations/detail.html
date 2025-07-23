@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}評価詳細 - {{ evaluation.candidate.candidate_company }} - RPO Automation{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- ヘッダー -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">{{ evaluation.candidate.candidate_company }}</h1>
+                <p class="mt-1 text-sm text-gray-600">{{ evaluation.requirement.title }} - {{ evaluation.requirement.client.name }}</p>
+            </div>
+            <a href="/evaluations" class="text-blue-600 hover:text-blue-800">
+                ← 一覧に戻る
+            </a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- 左カラム: AI評価結果 -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- AI評価サマリー -->
+            <div class="bg-white shadow rounded-lg p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">AI評価結果</h2>
+                
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="text-center">
+                        <p class="text-3xl font-bold {% if evaluation.score >= 80 %}text-green-600{% elif evaluation.score >= 60 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                            {{ evaluation.score }}
+                        </p>
+                        <p class="text-sm text-gray-500">スコア</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-3xl font-bold {% if evaluation.recommendation == 'A' %}text-green-600{% elif evaluation.recommendation == 'B' %}text-blue-600{% elif evaluation.recommendation == 'C' %}text-yellow-600{% else %}text-red-600{% endif %}">
+                            {{ evaluation.recommendation }}
+                        </p>
+                        <p class="text-sm text-gray-500">推奨度</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-lg font-medium text-gray-900">{{ evaluation.confidence }}</p>
+                        <p class="text-sm text-gray-500">確信度</p>
+                    </div>
+                </div>
+
+                <!-- 強み -->
+                {% if evaluation.strengths %}
+                <div class="mb-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">強み</h3>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        {% for strength in evaluation.strengths %}
+                        <li>{{ strength }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <!-- 懸念点 -->
+                {% if evaluation.concerns %}
+                <div class="mb-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">懸念点</h3>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        {% for concern in evaluation.concerns %}
+                        <li>{{ concern }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <!-- 総合評価 -->
+                {% if evaluation.overall_assessment %}
+                <div>
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">総合評価</h3>
+                    <p class="text-sm text-gray-600">{{ evaluation.overall_assessment }}</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 候補者情報 -->
+            <div class="bg-white shadow rounded-lg p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">候補者情報</h2>
+                <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">企業名</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ evaluation.candidate.candidate_company }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">候補者ID</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ evaluation.candidate.candidate_id }}</dd>
+                    </div>
+                    {% if evaluation.candidate.scraped_at %}
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">取得日</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ evaluation.candidate.scraped_at | date:"Y-m-d" }}</dd>
+                    </div>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+
+        <!-- 右カラム: クライアント評価 -->
+        <div class="lg:col-span-1">
+            <div class="bg-white shadow rounded-lg p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">クライアント評価</h2>
+                
+                {% if evaluation.client_evaluation %}
+                <!-- 評価済み -->
+                <div class="mb-4">
+                    <p class="text-3xl font-bold text-center mb-2 {% if evaluation.client_evaluation == 'A' %}text-green-600{% elif evaluation.client_evaluation == 'B' %}text-blue-600{% elif evaluation.client_evaluation == 'C' %}text-yellow-600{% else %}text-red-600{% endif %}">
+                        {{ evaluation.client_evaluation }}
+                    </p>
+                    {% if evaluation.client_comment %}
+                    <div class="mt-4">
+                        <h3 class="text-sm font-medium text-gray-700 mb-1">コメント</h3>
+                        <p class="text-sm text-gray-600">{{ evaluation.client_comment }}</p>
+                    </div>
+                    {% endif %}
+                    <div class="mt-4 text-xs text-gray-500">
+                        最終更新: {{ evaluation.updated_at | date:"Y-m-d H:i" }}
+                    </div>
+                </div>
+                
+                <!-- 編集ボタン -->
+                <button onclick="showEditForm()" class="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200">
+                    評価を編集
+                </button>
+                
+                {% else %}
+                <!-- 未評価 -->
+                <p class="text-gray-500 text-center mb-4">まだ評価されていません</p>
+                <button onclick="showEditForm()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    評価を追加
+                </button>
+                {% endif %}
+                
+                <!-- 編集フォーム（初期非表示） -->
+                <div id="editForm" class="hidden mt-4">
+                    <form onsubmit="submitClientFeedback(event)">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">評価</label>
+                            <div class="grid grid-cols-4 gap-2">
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="client_evaluation" value="A" class="sr-only peer" {% if evaluation.client_evaluation == 'A' %}checked{% endif %}>
+                                    <div class="text-center py-2 px-3 rounded border peer-checked:bg-green-100 peer-checked:border-green-600 peer-checked:text-green-600 hover:bg-gray-50">
+                                        A
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="client_evaluation" value="B" class="sr-only peer" {% if evaluation.client_evaluation == 'B' %}checked{% endif %}>
+                                    <div class="text-center py-2 px-3 rounded border peer-checked:bg-blue-100 peer-checked:border-blue-600 peer-checked:text-blue-600 hover:bg-gray-50">
+                                        B
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="client_evaluation" value="C" class="sr-only peer" {% if evaluation.client_evaluation == 'C' %}checked{% endif %}>
+                                    <div class="text-center py-2 px-3 rounded border peer-checked:bg-yellow-100 peer-checked:border-yellow-600 peer-checked:text-yellow-600 hover:bg-gray-50">
+                                        C
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="client_evaluation" value="D" class="sr-only peer" {% if evaluation.client_evaluation == 'D' %}checked{% endif %}>
+                                    <div class="text-center py-2 px-3 rounded border peer-checked:bg-red-100 peer-checked:border-red-600 peer-checked:text-red-600 hover:bg-gray-50">
+                                        D
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="client_comment" class="block text-sm font-medium text-gray-700 mb-1">
+                                コメント（任意）
+                            </label>
+                            <textarea 
+                                id="client_comment" 
+                                name="client_comment" 
+                                rows="3" 
+                                class="w-full rounded-md border-gray-300 shadow-sm"
+                                placeholder="評価の理由やフィードバック">{{ evaluation.client_comment or '' }}</textarea>
+                        </div>
+                        
+                        <div class="flex gap-2">
+                            <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                                保存
+                            </button>
+                            <button type="button" onclick="hideEditForm()" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400">
+                                キャンセル
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showEditForm() {
+    document.getElementById('editForm').classList.remove('hidden');
+}
+
+function hideEditForm() {
+    document.getElementById('editForm').classList.add('hidden');
+}
+
+async function submitClientFeedback(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const data = {
+        client_evaluation: formData.get('client_evaluation'),
+        client_comment: formData.get('client_comment')
+    };
+    
+    try {
+        const response = await fetch(`/api/evaluations/{{ evaluation.id }}/client-feedback`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            // 成功したらページをリロード
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('エラー: ' + (error.detail || 'フィードバックの保存に失敗しました'));
+        }
+    } catch (error) {
+        alert('通信エラーが発生しました');
+        console.error(error);
+    }
+}
+</script>
+{% endblock %}

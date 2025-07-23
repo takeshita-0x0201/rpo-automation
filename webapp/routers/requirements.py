@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from typing import List, Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 from pydantic import BaseModel
 from uuid import UUID
@@ -130,7 +133,9 @@ async def deactivate_requirement(requirement_id: str):
     return {"message": "Requirement deactivated successfully"}
 
 class StructureRequest(BaseModel):
-    text: str
+    text: Optional[str] = None  # 後方互換性のため残す（オプショナルに変更）
+    job_description: Optional[str] = None
+    job_memo: Optional[str] = None
 
 class StructureResponse(BaseModel):
     structured_data: Dict[str, Any]
@@ -141,49 +146,90 @@ class StructureResponse(BaseModel):
 async def structure_requirement(request: StructureRequest):
     """
     採用要件テキストをAIで構造化
+    新しい汎用プロンプトテンプレートを使用
     """
-    raw_structured_data = "" # 初期化
+    logger.info(f"Structure request received: text={request.text is not None}, job_description={request.job_description is not None}, job_memo={request.job_memo is not None}")
     try:
-        print("Attempting to initialize GeminiClient...")
-        # Gemini clientを初期化
-        gemini_client = GeminiClient()
-        print("GeminiClient initialized successfully.")
+        # 新しいAPIの場合（job_descriptionとjob_memoが提供される）
+        if request.job_description is not None and request.job_memo is not None:
+            print("Using new generic structure prompt template...")
+            print(f"Job description length: {len(request.job_description)}")
+            print(f"Job memo length: {len(request.job_memo)}")
+            
+            # Gemini clientを初期化
+            gemini_client = GeminiClient()
+            
+            # job_descriptionとjob_memoを結合して構造化
+            combined_text = f"求人情報:\n{request.job_description}\n\n求人メモ:\n{request.job_memo}"
+            
+            # 構造化を実行
+            raw_structured_data = await gemini_client.structure_requirement(combined_text)
+            
+            # MarkdownのJSONコードブロックからJSON文字列を抽出
+            import re
+            match = re.search(r"```json\n([\s\S]*?)\n```", raw_structured_data)
+            if not match:
+                raise ValueError("AIからの応答にJSONコードブロックが見つかりませんでした。")
+            
+            json_string = match.group(1).strip()
+            
+            if json_string.lower() == "null":
+                raise ValueError("AIからの応答がJSONコードブロック内に'null'を含んでいました。")
+            
+            structured_data = json.loads(json_string)
+            
+            print(f"Structured data generated successfully")
+            
+            return StructureResponse(
+                structured_data=structured_data,
+                success=True
+            )
         
-        print(f"Structuring text: {request.text[:50]}...") # テキストの冒頭50文字を表示
-        # 構造化を実行
-        raw_structured_data = await gemini_client.structure_requirement(request.text)
-        print(f"Raw structured_data received: {raw_structured_data[:500]}...") # 生の応答をログに出力
-
-        # MarkdownのJSONコードブロックからJSON文字列を抽出
-        import re
-        match = re.search(r"```json\n([\s\S]*?)\n```", raw_structured_data)
-        if not match:
-            raise ValueError("AIからの応答にJSONコードブロックが見つかりませんでした。")
+        # 既存のAPIの場合（textのみ）- 後方互換性のため
+        elif request.text is not None:
+            print("Using legacy structure method...")
+            raw_structured_data = ""
+            
+            # Gemini clientを初期化
+            gemini_client = GeminiClient()
+            
+            # 構造化を実行
+            raw_structured_data = await gemini_client.structure_requirement(request.text)
+            
+            # MarkdownのJSONコードブロックからJSON文字列を抽出
+            import re
+            match = re.search(r"```json\n([\s\S]*?)\n```", raw_structured_data)
+            if not match:
+                raise ValueError("AIからの応答にJSONコードブロックが見つかりませんでした。")
+            
+            json_string = match.group(1).strip()
+            
+            if json_string.lower() == "null":
+                raise ValueError("AIからの応答がJSONコードブロック内に'null'を含んでいました。")
+            
+            structured_data = json.loads(json_string)
+            
+            if structured_data is None:
+                raise ValueError("AIからの応答が空のJSON（null）でした。")
+            
+            if not isinstance(structured_data, dict):
+                raise ValueError(f"AIからの応答が期待する辞書型ではありませんでした: {type(structured_data)}")
+            
+            return StructureResponse(
+                structured_data=structured_data,
+                success=True
+            )
         
-        json_string = match.group(1).strip()
-        print(f"JSON string extracted: '{json_string}'") # デバッグログ追加
-
-        if json_string.lower() == "null":
-            raise ValueError("AIからの応答がJSONコードブロック内に'null'を含んでいました。")
-
-        structured_data = json.loads(json_string) # JSON文字列をPython辞書に変換
-        print(f"Parsed structured_data: {structured_data}") # デバッグログ追加
-
-        # structured_dataがNoneの場合のハンドリングを追加
-        if structured_data is None:
-            raise ValueError("AIからの応答が空のJSON（null）でした。")
-        
-        # structured_dataが辞書型でない場合のハンドリングを追加 (念のため)
-        if not isinstance(structured_data, dict):
-            raise ValueError(f"AIからの応答が期待する辞書型ではありませんでした: {type(structured_data)}")
-        
-        return StructureResponse(
-            structured_data=structured_data,
-            success=True
-        )
+        # どちらの形式でもない場合
+        else:
+            return StructureResponse(
+                structured_data={},
+                success=False,
+                error="Invalid request: Either provide 'text' for legacy API or both 'job_description' and 'job_memo' for new API"
+            )
+            
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e}")
-        print(f"Raw structured_data that caused error: {raw_structured_data}")
         return StructureResponse(
             structured_data={},
             success=False,
@@ -191,6 +237,8 @@ async def structure_requirement(request: StructureRequest):
         )
     except Exception as e:
         print(f"Error during structure_requirement: {e}")
+        import traceback
+        traceback.print_exc()
         return StructureResponse(
             structured_data={},
             success=False,

@@ -59,7 +59,7 @@ const StorageUtil = {
 // 認証トークン管理
 const TokenUtil = {
   // トークンを保存
-  async saveToken(token, expiresIn = 3600) {
+  async saveToken(token, expiresIn = 86400) {  // デフォルト24時間
     const expiry = Date.now() + (expiresIn * 1000);
     await StorageUtil.set(STORAGE_KEYS.AUTH_TOKEN, token);
     await StorageUtil.set(STORAGE_KEYS.TOKEN_EXPIRY, expiry);
