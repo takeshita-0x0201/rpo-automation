@@ -46,7 +46,9 @@ class OpenWorkScraper {
       await this.scrapeCurrentBatch();
       
       // 自動的に次のページへ進む場合
-      if (this.sessionData.auto_pagination) {
+      console.log('Auto pagination enabled:', this.sessionData.auto_pagination);
+      if (this.sessionData.auto_pagination !== false) {
+        // デフォルトでtrueとして扱う
         await this.continueScraping();
       }
       
@@ -189,21 +191,50 @@ class OpenWorkScraper {
           const parser = new DOMParser();
           const resumeDoc = parser.parseFromString(resumeHtml, 'text/html');
           
-          // 複数のセレクタを試す
+          // 複数のセレクタを試す（提供されたXPathを優先）
           const selectors = [
+            '#jsContainerContents > section > div > div:first-child',
+            '#jsContainerContents > section > div > div:first-child > table:first-child > tbody',
             '#jsContainerContents section div div:first-child',
-            '#jsContainerContents .resume-content',
-            '#jsContainerContents',
-            '.candidate-resume',
-            'section.resume'
+            '#jsContainerContents section div div:first-child table tbody',
+            '#jsContainerContents'
           ];
           
           let resumeElement = null;
+          
+          // まずCSSセレクタで試す
           for (const selector of selectors) {
             resumeElement = resumeDoc.querySelector(selector);
             if (resumeElement) {
-              console.log(`Resume found with selector: ${selector}`);
+              console.log(`Resume found with CSS selector: ${selector}`);
               break;
+            }
+          }
+          
+          // CSSセレクタで見つからない場合はXPathも試す
+          if (!resumeElement) {
+            const xpaths = [
+              '//*[@id="jsContainerContents"]/section/div/div[1]',
+              '//*[@id="jsContainerContents"]/section/div/div[1]/table[1]/tbody'
+            ];
+            
+            for (const xpath of xpaths) {
+              try {
+                const result = resumeDoc.evaluate(
+                  xpath,
+                  resumeDoc,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null
+                );
+                resumeElement = result.singleNodeValue;
+                if (resumeElement) {
+                  console.log(`Resume found with XPath: ${xpath}`);
+                  break;
+                }
+              } catch (e) {
+                console.error('XPath error:', e);
+              }
             }
           }
           
@@ -341,16 +372,29 @@ class OpenWorkScraper {
     // XPathで見つからない場合はCSSセレクタも試す
     if (!nextButton) {
       const cssSelectors = [
+        'a.button.button-white:contains("次の候補者")',
+        '#testDrawer a.button-white',
         '#testDrawer ul li:nth-child(2) a',
-        '#testDrawer .pagination-next',
-        '#testDrawer a[aria-label*="次"]',
-        '#testDrawer a:contains("次へ")',
-        'a.next-button'
+        '#testDrawer a[class*="button-white"]',
+        'a.button.button-white.fs-11.w-100'
       ];
       
       for (const selector of cssSelectors) {
         try {
-          nextButton = document.querySelector(selector);
+          if (selector.includes(':contains')) {
+            // :contains擬似セレクタの場合は別処理
+            const buttons = document.querySelectorAll('a.button.button-white');
+            for (const btn of buttons) {
+              if (btn.textContent.includes('次の候補者')) {
+                nextButton = btn;
+                console.log('Next button found by text content');
+                break;
+              }
+            }
+          } else {
+            nextButton = document.querySelector(selector);
+          }
+          
           if (nextButton) {
             console.log(`Next button found with selector: ${selector}`);
             break;
