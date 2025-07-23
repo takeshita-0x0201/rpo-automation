@@ -10,7 +10,9 @@ from typing import Optional
 from core.utils.supabase_client import get_supabase_client
 
 # JWT設定
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY environment variable is not set")
 ALGORITHM = "HS256"
 
 # HTTPBearerスキーム（auto_error=Falseでオプショナルに）

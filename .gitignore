@@ -99,3 +99,6 @@ test_*.py
 
 # Editor history
 .history/
+
+# MCP configuration (contains sensitive tokens)
+.mcp.json

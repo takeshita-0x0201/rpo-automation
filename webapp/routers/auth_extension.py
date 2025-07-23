@@ -13,7 +13,9 @@ from core.utils.supabase_client import SupabaseAuth, get_supabase_client, get_us
 router = APIRouter(prefix="/api/auth/extension", tags=["extension-auth"])
 
 # JWT設定（auth.pyと同じ設定を使用）
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY environment variable is not set")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 拡張機能用は24時間
 
