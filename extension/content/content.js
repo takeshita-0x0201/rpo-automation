@@ -7,6 +7,16 @@ let scraper = null;
 
 // 初期化
 async function initialize() {
+  console.log('content.js initialize() called');
+  
+  // 利用可能なクラスを確認
+  console.log('Available scrapers:', {
+    BizReachScraper: typeof BizReachScraper,
+    OpenWorkScraper: typeof OpenWorkScraper,
+    ExampleSiteScraper: typeof ExampleSiteScraper,
+    windowOpenWorkScraper: typeof window.OpenWorkScraper
+  });
+  
   // 現在のドメインを確認
   const currentDomain = window.location.hostname;
   
@@ -20,12 +30,16 @@ async function initialize() {
       console.log('BizReach scraper initialized');
     }
   } else if (currentDomain.includes('vorkers.com') || currentDomain.includes('openwork')) {
-    if (typeof OpenWorkScraper !== 'undefined') {
-      scraper = new OpenWorkScraper();
+    // window経由でも試す
+    const ScraperClass = window.OpenWorkScraper || OpenWorkScraper;
+    if (typeof ScraperClass !== 'undefined') {
+      scraper = new ScraperClass();
       await scraper.initialize();
       console.log('OpenWork scraper initialized');
     } else {
       console.error('OpenWorkScraper is not defined');
+      console.error('window.OpenWorkScraper:', window.OpenWorkScraper);
+      console.error('Direct OpenWorkScraper:', typeof OpenWorkScraper === 'undefined' ? 'undefined' : OpenWorkScraper);
     }
   } else if (currentDomain.includes('example.com')) {
     // 新しいサイトのスクレイパー

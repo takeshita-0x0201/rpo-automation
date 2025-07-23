@@ -348,5 +348,11 @@ class OpenWorkScraper {
   }
 }
 
-// グローバルに公開
+// デバッグログ
+console.log('openwork.js loading...');
+
+// グローバルに公開（Chrome拡張機能のcontent script内）
 window.OpenWorkScraper = OpenWorkScraper;
+
+// 読み込み確認
+console.log('OpenWorkScraper loaded successfully');
