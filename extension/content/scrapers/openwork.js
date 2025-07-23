@@ -92,17 +92,17 @@ class OpenWorkScraper {
     const data = {};
     
     try {
-      // 候補者ID
-      const candidateIdElement = document.querySelector('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/dl/dd');
-      if (candidateIdElement) {
-        data.candidate_id = this.cleanText(candidateIdElement);
+      // 候補者ID - CSSセレクタで取得
+      const idElement = document.querySelector('#testDrawer dl dd');
+      if (idElement) {
+        data.candidate_id = this.cleanText(idElement);
       }
       
-      // 候補者ID取得の別の方法（XPathが機能しない場合）
+      // XPathでの取得も試す
       if (!data.candidate_id) {
-        const idElement = document.querySelector('#testDrawer dl dd');
-        if (idElement) {
-          data.candidate_id = this.cleanText(idElement);
+        const candidateIdElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/dl/dd');
+        if (candidateIdElement) {
+          data.candidate_id = this.cleanText(candidateIdElement);
         }
       }
       
@@ -118,7 +118,10 @@ class OpenWorkScraper {
       data.candidate_link = `https://recruiting.vorkers.com/scout/candidates/${data.candidate_id}/resume`;
       
       // 現在の会社名
-      const companyElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/div/h2/span');
+      let companyElement = document.querySelector('#testDrawer h2 span');
+      if (!companyElement) {
+        companyElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/div/h2/span');
+      }
       if (companyElement) {
         data.candidate_company = this.cleanText(companyElement);
       }
@@ -126,23 +129,25 @@ class OpenWorkScraper {
       // 性別（OpenWorkでは提供されていない）
       data.gender = null;
       
-      // 年齢
-      const ageElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/p[2]/span[1]');
-      if (ageElement) {
-        const ageText = this.cleanText(ageElement);
-        const ageMatch = ageText.match(/(\d+)歳/);
-        if (ageMatch) {
-          data.age = parseInt(ageMatch[1]);
+      // 年齢と在籍企業数を含むp要素を探す
+      const infoElements = document.querySelectorAll('#testDrawer p');
+      for (const p of infoElements) {
+        const text = this.cleanText(p);
+        
+        // 年齢を抽出
+        if (!data.age) {
+          const ageMatch = text.match(/(\d+)歳/);
+          if (ageMatch) {
+            data.age = parseInt(ageMatch[1]);
+          }
         }
-      }
-      
-      // 在籍企業数
-      const companyCountElement = this.getElementByXPath('//*[@id="testDrawer"]/div[1]/div/div/div[1]/div/p[2]/span[4]');
-      if (companyCountElement) {
-        const countText = this.cleanText(companyCountElement);
-        const countMatch = countText.match(/(\d+)社/);
-        if (countMatch) {
-          data.enrolled_company_count = parseInt(countMatch[1]);
+        
+        // 在籍企業数を抽出
+        if (!data.enrolled_company_count) {
+          const countMatch = text.match(/(\d+)社/);
+          if (countMatch) {
+            data.enrolled_company_count = parseInt(countMatch[1]);
+          }
         }
       }
       
