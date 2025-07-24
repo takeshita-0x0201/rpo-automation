@@ -288,7 +288,7 @@ async function getMediaPlatforms() {
 }
 
 // スクレイピング開始
-async function startScraping({ clientId, clientName, requirementId, pageLimit }) {
+async function startScraping({ clientId, clientName, requirementId, pageLimit, scrape_resume }) {
   try {
     console.log('Starting scraping session:', { clientId, clientName, requirementId });
     console.log('Auth token available:', !!authState.token);
@@ -391,7 +391,8 @@ async function startScraping({ clientId, clientName, requirementId, pageLimit })
             sessionId: data.session_id,
             clientId: clientId,
             requirementId: requirementId,
-            pageLimit: pageLimit
+            pageLimit: pageLimit,
+            scrape_resume: scrape_resume // フラグを渡す
           }
         });
       } catch (error) {

@@ -523,7 +523,8 @@ async function handleStart() {
         clientId: state.selectedRequirement.client_id,
         clientName: state.selectedRequirement.client_name || state.selectedRequirement.client?.name,
         requirementId: state.selectedRequirement.id,
-        pageLimit: state.pageCount
+        pageLimit: state.pageCount,
+        scrape_resume: true // 常時レジュメを取得するよう修正
       }
     });
     

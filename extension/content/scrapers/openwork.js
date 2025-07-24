@@ -178,77 +178,53 @@ class OpenWorkScraper {
         }
       }
       
-      // レジュメ内容を取得（詳細ページにアクセスが必要な場合）
-      console.log('Checking scrape_resume flag:', this.sessionData.scrape_resume);
+      // レジュメ内容を取得
+      console.log('Extracting resume from current document, scrape_resume flag:', this.sessionData.scrape_resume);
       if (this.sessionData.scrape_resume) {
-        console.log('Attempting to fetch resume from:', data.candidate_link);
-        
-        // レート制限対策（2-4秒のランダム待機）
-        const resumeDelay = Math.floor(Math.random() * 2001) + 2000; // 2000-4000ms
-        console.log(`Waiting ${resumeDelay/1000} seconds before fetching resume...`);
-        await this.wait(resumeDelay);
-        
-        // レジュメページを開く
-        const resumeResponse = await fetch(data.candidate_link, {
-          credentials: 'include',
-          headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-          }
-        });
-        
-        if (resumeResponse.ok) {
-          console.log('Resume fetch successful, parsing HTML...');
-          const resumeHtml = await resumeResponse.text();
-          const parser = new DOMParser();
-          const resumeDoc = parser.parseFromString(resumeHtml, 'text/html');
-          
-          // 複数の要素を取得して結合
-          const resumeParts = [];
-          
-          // 取得する要素のXPathリスト
-          const xpathsToExtract = [
-            '//*[@id="jsContainerContents"]/section/div/div[1]/table[1]',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/table[2]',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/h3',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/div[1]',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/div[2]',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/div[3]',
-            '//*[@id="jsContainerContents"]/section/div/div[1]/div[4]'
-          ];
-          
-          // 各要素を取得
-          for (const xpath of xpathsToExtract) {
-            try {
-              const result = resumeDoc.evaluate(
-                xpath,
-                resumeDoc,
-                null,
-                XPathResult.FIRST_ORDERED_NODE_TYPE,
-                null
-              );
-              const element = result.singleNodeValue;
-              
-              if (element) {
-                const text = this.cleanText(element);
-                if (text) {
-                  resumeParts.push(text);
-                  console.log(`Resume part found with XPath ${xpath}, length: ${text.length}`);
-                }
+        const resumeParts = [];
+        // 1. 固定要素（テーブルやH3タイトル）を先に取得
+        const fixedXpaths = [
+          '//*[@id="jsContainerContents"]/section/div/div[1]/table[1]',
+          '//*[@id="jsContainerContents"]/section/div/div[1]/table[2]',
+          '//*[@id="jsContainerContents"]/section/div/div[1]/h3'
+        ];
+
+        for (const xpath of fixedXpaths) {
+          try {
+            const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            const element = result.singleNodeValue;
+            if (element) {
+              const text = this.cleanText(element);
+              if (text) {
+                resumeParts.push(text);
               }
-            } catch (e) {
-              console.error(`XPath error for ${xpath}:`, e);
             }
+          } catch (e) {
+            console.error(`[Fixed XPath Error] for ${xpath}:`, e);
           }
-          
-          // 全要素を結合
-          if (resumeParts.length > 0) {
-            data.candidate_resume = resumeParts.join('\n\n');
-            console.log(`Resume assembled from ${resumeParts.length} parts, total length: ${data.candidate_resume.length}`);
-          } else {
-            console.warn('No resume elements found in the document');
+        }
+
+        // 2. 職務経歴など、可変するdiv要素を全て取得
+        const dynamicDivXpath = '//*[@id="jsContainerContents"]/section/div/div[1]/div';
+        try {
+          const divResults = document.evaluate(dynamicDivXpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+          let currentDiv = divResults.iterateNext();
+          while (currentDiv) {
+            const text = this.cleanText(currentDiv);
+            if (text) {
+              resumeParts.push(text);
+            }
+            currentDiv = divResults.iterateNext();
           }
+        } catch (e) {
+          console.error(`[Dynamic Divs XPath Error] for ${dynamicDivXpath}:`, e);
+        }
+
+        if (resumeParts.length > 0) {
+          data.candidate_resume = resumeParts.join('\n\n');
+          console.log(`Resume assembled from ${resumeParts.length} parts, total length: ${data.candidate_resume.length}`);
         } else {
-          console.error('Failed to fetch resume, status:', resumeResponse.status);
+          console.warn('No resume elements found in the document. The page structure might have changed.');
         }
       }
       
@@ -538,9 +514,7 @@ class OpenWorkScraper {
     
     const text = element.textContent || element.innerText || '';
     return text.trim()
-      .replace(/\s+/g, ' ')
-      .replace(/[\n\r]+/g, ' ')
-      .trim();
+      .replace(/\s+/g, ' '); // 複数の空白や改行をスペース1つに統一
   }
 
   // 待機処理
