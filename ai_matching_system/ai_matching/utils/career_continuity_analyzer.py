@@ -7,6 +7,10 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import re
+import asyncio
+import os
+
+from .semantic_skill_matcher import SemanticSkillMatcher, SkillMatchResult, RoleRelevanceResult
 
 
 @dataclass
@@ -37,7 +41,7 @@ class ContinuityAssessment:
 class CareerContinuityAnalyzer:
     """キャリア継続性分析器"""
     
-    def __init__(self):
+    def __init__(self, use_llm: bool = True, gemini_api_key: Optional[str] = None):
         # スキルの陳腐化率（月あたり）
         self.skill_decay_rate = 0.02  # 毎月2%スキルが劣化
         
@@ -61,8 +65,22 @@ class CareerContinuityAnalyzer:
             "異動", "配属変更", "部署移動", "ローテーション",
             "出向", "転籍"
         ]
+        
+        # LLMベースのスキルマッチャーを初期化
+        self.use_llm = use_llm
+        if use_llm:
+            if not gemini_api_key:
+                gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_GEMINI_API_KEY")
+            if gemini_api_key:
+                self.skill_matcher = SemanticSkillMatcher(gemini_api_key)
+            else:
+                print("[CareerContinuityAnalyzer] 警告: Gemini APIキーが設定されていません。従来のマッチングに切り替えます。")
+                self.use_llm = False
+                self.skill_matcher = None
+        else:
+            self.skill_matcher = None
     
-    def analyze_career_continuity(self,
+    async def analyze_career_continuity(self,
                                 resume_text: str,
                                 required_skills: List[str],
                                 required_experience: str) -> ContinuityAssessment:
@@ -73,7 +91,7 @@ class CareerContinuityAnalyzer:
         
         # 求める経験との関連性を評価
         for period in career_timeline:
-            period.is_relevant = self._is_experience_relevant(
+            period.is_relevant = await self._is_experience_relevant(
                 period, required_skills, required_experience
             )
         
@@ -199,11 +217,73 @@ class CareerContinuityAnalyzer:
         
         return timeline
     
-    def _is_experience_relevant(self,
-                               period: CareerPeriod,
-                               required_skills: List[str],
-                               required_experience: str) -> bool:
+    async def _is_experience_relevant(self,
+                                    period: CareerPeriod,
+                                    required_skills: List[str],
+                                    required_experience: str) -> bool:
         """経験が求めるものと関連しているか判定"""
+        
+        if self.use_llm and self.skill_matcher:
+            # LLMベースの評価
+            try:
+                # スキルマッチングをバッチで実行
+                skill_results = await self.skill_matcher.match_skills_batch(
+                    required_skills, 
+                    period.skills
+                )
+                
+                # 役職関連性を評価
+                # 業務内容の説明を作成（期間のスキルから）
+                period_description = f"{period.role}として{'、'.join(period.skills[:5])}等の業務に従事"
+                
+                role_result = await self.skill_matcher.evaluate_role_relevance(
+                    required_experience,
+                    period.role,
+                    period_description
+                )
+                
+                # マッチしたスキルをカウント
+                skill_match_count = sum(1 for result in skill_results if result.is_match)
+                skill_match_ratio = skill_match_count / len(required_skills) if required_skills else 0
+                
+                # 詳細なデバッグ情報
+                print(f"    期間判定: {period.role} at {period.company}")
+                print(f"      LLMスキル評価:")
+                for result in skill_results[:3]:  # 最初の3つを表示
+                    if result.is_match:
+                        print(f"        ✓ {result.required_skill} ≈ {result.matched_candidate_skill} (スコア: {result.match_score:.2f})")
+                        print(f"          理由: {result.reasoning}")
+                
+                print(f"      スキル一致: {skill_match_count}/{len(required_skills)} ({skill_match_ratio:.1%})")
+                print(f"      役職関連性: {role_result.is_relevant} (スコア: {role_result.relevance_score:.2f})")
+                if role_result.matched_aspects:
+                    print(f"        一致要素: {', '.join(role_result.matched_aspects)}")
+                print(f"        理由: {role_result.reasoning}")
+                
+                # 総合判定（スキルマッチ30%以上または役職関連性60%以上）
+                is_relevant = skill_match_ratio >= 0.3 or role_result.relevance_score >= 0.6
+                print(f"      → 関連性: {'あり' if is_relevant else 'なし'}")
+                
+                return is_relevant
+                
+            except Exception as e:
+                print(f"      LLM評価エラー: {e}")
+                print(f"      従来の評価方法にフォールバック")
+                # エラー時は従来の方法にフォールバック
+                return self._is_experience_relevant_legacy(
+                    period, required_skills, required_experience
+                )
+        else:
+            # 従来の評価方法
+            return self._is_experience_relevant_legacy(
+                period, required_skills, required_experience
+            )
+    
+    def _is_experience_relevant_legacy(self,
+                                     period: CareerPeriod,
+                                     required_skills: List[str],
+                                     required_experience: str) -> bool:
+        """従来の方法で経験が求めるものと関連しているか判定"""
         # スキルの一致度をチェック
         skill_match_count = 0
         for req_skill in required_skills:

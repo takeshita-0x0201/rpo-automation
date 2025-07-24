@@ -43,8 +43,8 @@ class EnhancedEvaluatorNode(BaseNode):
         # メタ学習器の初期化
         self.meta_learner = MetaLearner()
         
-        # キャリア継続性分析器の初期化
-        self.career_analyzer = CareerContinuityAnalyzer()
+        # キャリア継続性分析器の初期化（LLMモードを有効化）
+        self.career_analyzer = CareerContinuityAnalyzer(use_llm=True, gemini_api_key=api_key)
         
         # 年齢・経験社数分析器の初期化
         self.age_experience_analyzer = AgeExperienceAnalyzer()
@@ -315,7 +315,7 @@ class EnhancedEvaluatorNode(BaseNode):
         required_skills = self._extract_required_skills(state)
         required_experience = state.job_description if state.job_description else state.job_memo
         
-        career_assessment = self.career_analyzer.analyze_career_continuity(
+        career_assessment = await self.career_analyzer.analyze_career_continuity(
             resume_text=state.resume,
             required_skills=required_skills,
             required_experience=required_experience
