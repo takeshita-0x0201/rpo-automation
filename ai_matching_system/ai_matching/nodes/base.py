@@ -34,6 +34,9 @@ class ResearchState:
     # 求人の構造化データ
     structured_job_data: Optional[Dict] = None
     
+    # レジュメの構造化データ（追加）
+    structured_resume_data: Optional[Dict] = None
+    
     # 処理中のデータ
     current_evaluation: Optional['EvaluationResult'] = None
     information_gaps: List['InformationGap'] = field(default_factory=list)

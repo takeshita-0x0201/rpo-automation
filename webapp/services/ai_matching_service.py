@@ -23,9 +23,11 @@ sys.path.append(ai_matching_path)
 # AIマッチングシステムのインポート
 try:
     from ai_matching.nodes.orchestrator import SeparatedDeepResearchMatcher
+    from ai_matching.utils.resume_parser import ResumeParser
 except ImportError as e:
     print(f"Warning: Could not import AI matching system: {e}")
     SeparatedDeepResearchMatcher = None
+    ResumeParser = None
 
 from core.utils.supabase_client import get_supabase_client
 
@@ -35,7 +37,9 @@ class AIMatchingService:
     def __init__(self):
         self.supabase = get_supabase_client()
         self.matcher = None
+        self.resume_parser = None
         self._initialize_matcher()
+        self._initialize_resume_parser()
     
     def _initialize_matcher(self):
         """マッチャーの初期化"""
@@ -67,6 +71,30 @@ class AIMatchingService:
             traceback.print_exc()
             self.matcher = None
             # API キーが設定されていない場合でも続行
+    
+    def _initialize_resume_parser(self):
+        """レジュメパーサーの初期化"""
+        print(f"[AI Matching] Initializing resume parser...")
+        print(f"[AI Matching] ResumeParser available: {ResumeParser is not None}")
+        
+        if ResumeParser is None:
+            print("[AI Matching] Warning: Resume parser not available (import failed)")
+            self.resume_parser = None
+            return
+            
+        try:
+            # APIキーの状態を確認
+            gemini_key = os.getenv('GEMINI_API_KEY')
+            
+            print(f"[AI Matching] Resume Parser - Gemini API Key: {'Set' if gemini_key else 'Not set'}")
+            
+            self.resume_parser = ResumeParser(api_key=gemini_key)
+            print(f"[AI Matching] Resume parser initialized successfully")
+        except Exception as e:
+            print(f"[AI Matching] Failed to initialize resume parser: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            self.resume_parser = None
     
     async def process_job(self, job_id: str):
         """ジョブを処理"""
@@ -124,6 +152,24 @@ class AIMatchingService:
                     print(f"[AI Matching] Formatted job memo preview (first 200 chars):")
                     print(f"  {job_memo_text[:200]}...")
                     
+                    # レジュメを構造化
+                    structured_resume_data = None
+                    if self.resume_parser and resume_text:
+                        try:
+                            print(f"[AI Matching] Parsing resume for candidate {candidate.get('id')}")
+                            structured_resume = await self.resume_parser.parse_resume(resume_text)
+                            # StructuredResumeオブジェクトからディクショナリに変換
+                            structured_resume_data = {
+                                'basic_info': structured_resume.basic_info,
+                                'raw_data': structured_resume.raw_data,
+                                'matching_data': structured_resume.matching_data,
+                                'metadata': structured_resume.metadata
+                            }
+                            print(f"[AI Matching] Resume parsed successfully - extracted {len(structured_resume.matching_data.get('skills_flat', []))} skills")
+                        except Exception as e:
+                            print(f"[AI Matching] Failed to parse resume: {e}")
+                            # パースに失敗してもマッチングは続行
+                    
                     # AIマッチング実行
                     if self.matcher and hasattr(self.matcher, 'match_candidate_direct'):
                         # 数値パラメータの安全な変換
@@ -156,7 +202,8 @@ class AIMatchingService:
                             candidate_company=candidate.get('candidate_company'),
                             enrolled_company_count=enrolled_company_count,
                             # 構造化データを追加
-                            structured_job_data=requirement.get('structured_data')
+                            structured_job_data=requirement.get('structured_data'),
+                            structured_resume_data=structured_resume_data
                         )
                         print(f"[AI Matching] Real result - Score: {result.get('final_score')}, Rec: {result.get('final_judgment', {}).get('recommendation')}")
                     else:

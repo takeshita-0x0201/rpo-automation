@@ -75,7 +75,8 @@ class DeepResearchOrchestrator:
         candidate_gender: Optional[str] = None,
         candidate_company: Optional[str] = None,
         enrolled_company_count: Optional[int] = None,
-        structured_job_data: Optional[Dict] = None
+        structured_job_data: Optional[Dict] = None,
+        structured_resume_data: Optional[Dict] = None
     ) -> Dict:
         """
         DeepResearchプロセスを実行
@@ -91,6 +92,7 @@ class DeepResearchOrchestrator:
             candidate_company: 現在の所属企業
             enrolled_company_count: 在籍企業数
             structured_job_data: 構造化された求人データ（給与、スキル要件等）
+            structured_resume_data: 構造化されたレジュメデータ
             
         Returns:
             処理結果の辞書
@@ -106,7 +108,8 @@ class DeepResearchOrchestrator:
             candidate_gender=candidate_gender,
             candidate_company=candidate_company,
             enrolled_company_count=enrolled_company_count,
-            structured_job_data=structured_job_data
+            structured_job_data=structured_job_data,
+            structured_resume_data=structured_resume_data
         )
         
         print("=== DeepResearch 分離型マッチング開始 ===")
@@ -397,7 +400,8 @@ class SeparatedDeepResearchMatcher:
         candidate_gender: Optional[str] = None,
         candidate_company: Optional[str] = None,
         enrolled_company_count: Optional[int] = None,
-        structured_job_data: Optional[Dict] = None
+        structured_job_data: Optional[Dict] = None,
+        structured_resume_data: Optional[Dict] = None
     ) -> Dict:
         """
         テキストを直接渡してマッチングを実行
@@ -413,6 +417,7 @@ class SeparatedDeepResearchMatcher:
             candidate_company: 現在の所属企業
             enrolled_company_count: 在籍企業数
             structured_job_data: 構造化された求人データ
+            structured_resume_data: 構造化されたレジュメデータ
             
         Returns:
             マッチング結果
@@ -454,6 +459,7 @@ class SeparatedDeepResearchMatcher:
                 candidate_gender=candidate_gender,
                 candidate_company=candidate_company,
                 enrolled_company_count=enrolled_company_count,
-                structured_job_data=structured_job_data
+                structured_job_data=structured_job_data,
+                structured_resume_data=structured_resume_data
             )
         )

@@ -82,8 +82,11 @@ class EvaluatorNode(BaseNode):
         guard_insights = self._apply_semantic_guards(state)
         
         # 構造化データの存在チェック
-        has_structured_data = hasattr(state, 'structured_job_data') and state.structured_job_data
-        structured_data_text = self._format_structured_job_data(state) if has_structured_data else ''
+        has_structured_job_data = hasattr(state, 'structured_job_data') and state.structured_job_data
+        structured_job_data_text = self._format_structured_job_data(state) if has_structured_job_data else ''
+        
+        has_structured_resume_data = hasattr(state, 'structured_resume_data') and state.structured_resume_data
+        structured_resume_data_text = self._format_structured_resume_data(state) if has_structured_resume_data else ''
         
         # 最適化されたプロンプト
         prompt = f"""あなたは経験豊富な採用コンサルタントです。
@@ -99,13 +102,15 @@ class EvaluatorNode(BaseNode):
    - 企業文化や詳細な業務内容の理解
 
 # 入力データ
-## 候補者レジュメ
+## 候補者レジュメ（原文）
 {state.resume}
 
 ## 候補者情報
 {candidate_info}
 
-{structured_data_text}
+{structured_resume_data_text}
+
+{structured_job_data_text}
 
 ## 求人票（自由記述）
 ※構造化データで判断できない項目の参照用
@@ -118,6 +123,21 @@ class EvaluatorNode(BaseNode):
 {history_text}
 {rag_insights_text}
 {guard_insights}
+
+# 【最重要】必須要件と歓迎要件の区別
+## 必須要件（required_skills / 必須経験）
+- 候補者が持っていなければならない要件
+- 不足している場合は懸念点として記載する
+- 評価の45%を占める
+
+## 歓迎要件（preferred_skills / 歓迎経験 / 業界経験）
+- あればプラスになる要件
+- 不足していても懸念点には記載しない
+- 評価の15%を占める（純粋な加点要素）
+- 特定業界の経験は多くの場合歓迎要件
+
+【重要】「飲食、物流、小売業界の経験」「新規顧客獲得経験」などが歓迎要件の場合、
+それらがなくても絶対に懸念点として記載しない
 
 # 評価方針（改善版 - セマンティック理解重視）
 1. 必須要件は業務本質を理解した上で評価する
@@ -175,12 +195,14 @@ class EvaluatorNode(BaseNode):
 - 過去の実績・成果から判断
 - 具体的な数値や成果があれば加点
 
-## 歓迎要件（15%）
+## 歓迎要件（15%）【純粋な加点要素】
 - **構造化データの歓迎スキル（preferred_skills）を最優先で評価**
 - 構造化データがない場合のみ、求人票の「歓迎する経験・スキル」「尚可」項目を使用
 - 1つ充足ごとに加点（最大15%）
 - 特に重要な歓迎要件は2倍の加点
 - 必須要件を補強する歓迎要件は追加加点
+- ※歓迎要件を満たしていなくても減点はしない
+- ※歓迎要件の不足は懸念点に含めない
 
 ## 組織適合性（10%）
 - 過去の所属企業と求人企業の類似性（業界、規模、文化）
@@ -261,16 +283,28 @@ class EvaluatorNode(BaseNode):
 
 主な強み:
 - [必須要件との合致点を優先的に記載]
-- [歓迎要件の充足があれば明記]
+- [歓迎要件の充足があれば「○○の歓迎要件も満たしている」と明記]
 - [突出した経歴・実績があれば強調（「○○での実績は業界でも稀少」等）]
 - [「会ってみたい」と思わせる要素を明記]
 
 主な懸念点:
-- [必須要件の不足を最優先で記載（「○○の必須要件を満たしていない」と明確に）]
+【超重要】以下のルールを厳守すること：
+1. 必須要件（required_skills/必須経験）の不足のみを記載
+2. 歓迎要件（preferred_skills/歓迎経験）の不足は絶対に記載しない
+3. 「業界知識不足」は、それが必須要件である場合のみ記載
+
+記載フォーマット：
+- [必須要件の不足のみを記載（「○○の必須要件を満たしていない」と明確に）]
 - [必須要件不足による具体的な業務遂行上のリスク]
-- [その他の懸念事項を事実ベースで記載]
-- [※「面接で確認可能」「改善可能」等の楽観的コメントは一切記載しない]
-- [※必須要件を1つでも満たさない場合、それは致命的な問題として扱う]
+
+【絶対に記載してはいけない例】
+× 飲食、物流、小売業界への営業経験がない（これが歓迎要件の場合）
+× 新規顧客獲得の経験が不明（これが歓迎要件の場合）
+× 特定業界の知識がない（これが歓迎要件の場合）
+
+【記載すべき例】
+○ 5年以上の法人営業経験（必須要件）を満たしていない
+○ マネジメント経験（必須要件）が確認できない
 
 評価サマリー:
 [以下を含む総合評価]
@@ -293,11 +327,18 @@ class EvaluatorNode(BaseNode):
 - 必須要件と歓迎要件を明確に区別
 - 必須要件の不足は致命的な問題として扱う
 - 必須要件を1つでも満たさない場合、その影響を懸念点で詳細に説明
-- 歓迎要件は加点要素として積極的に評価
+- 歓迎要件は純粋な加点要素として評価（満たしていなくても懸念点には含めない）
+- 歓迎要件の不足を理由に候補者を否定的に評価しない
 - レジュメに記載された事実・経歴のみで判断（ポテンシャルや可能性は評価しない）
 - 「面接でカバー可能」「今後の成長に期待」等の楽観的評価は一切含めない
 - 最終的に「現時点の経歴でクライアントがこの候補者と面談すべきか」で判断
-- 必須要件不足の候補者は原則として推薦しない姿勢で評価"""
+- 必須要件不足の候補者は原則として推薦しない姿勢で評価
+
+# 懸念点記載のルール
+- 懸念点には必須要件の不足のみを記載する
+- 歓迎要件が満たされていないことは懸念点として扱わない
+- 「○○の歓迎要件はないが...」のような記載は避ける
+- 歓迎要件は「あれば嬉しい」レベルであることを理解する"""
         
         print(f"  LLMにプロンプト送信中... (文字数: {len(prompt)})")
         response = self.model.generate_content(prompt)
@@ -518,6 +559,68 @@ class EvaluatorNode(BaseNode):
         else:
             print("    [候補者情報取得] 候補者基本情報が提供されていません")
             return "年齢: 不明（候補者情報が提供されていません）"
+    
+    def _format_structured_resume_data(self, state: ResearchState) -> str:
+        """構造化されたレジュメデータをフォーマット"""
+        if not hasattr(state, 'structured_resume_data') or not state.structured_resume_data:
+            return ""
+        
+        data = state.structured_resume_data
+        formatted_parts = []
+        
+        formatted_parts.append("## 候補者詳細データ（構造化データ）【高精度抽出済み】")
+        
+        # 基本情報
+        basic_info = data.get('basic_info', {})
+        if basic_info:
+            formatted_parts.append("\n### 基本情報")
+            if basic_info.get('name'):
+                formatted_parts.append(f"氏名: {basic_info['name']}")
+            if basic_info.get('age'):
+                formatted_parts.append(f"年齢: {basic_info['age']}歳")
+            if basic_info.get('current_company'):
+                formatted_parts.append(f"現職: {basic_info['current_company']}")
+        
+        # マッチング用データ
+        matching_data = data.get('matching_data', {})
+        if matching_data:
+            formatted_parts.append("\n### 経験サマリー")
+            formatted_parts.append(f"総経験年数: {matching_data.get('total_experience_years', 0)}年")
+            if matching_data.get('current_role'):
+                formatted_parts.append(f"現在の役職: {matching_data['current_role']}")
+            
+            # 抽出されたスキル
+            if matching_data.get('skills_flat'):
+                formatted_parts.append("\n### 保有スキル（構造化抽出）")
+                for i, skill in enumerate(matching_data['skills_flat'][:20], 1):
+                    formatted_parts.append(f"{i}. {skill}")
+                if len(matching_data['skills_flat']) > 20:
+                    formatted_parts.append(f"... 他{len(matching_data['skills_flat']) - 20}件")
+            
+            # 主要な実績
+            if matching_data.get('key_achievements'):
+                formatted_parts.append("\n### 主要実績（数値含む）")
+                for i, achievement in enumerate(matching_data['key_achievements'][:5], 1):
+                    formatted_parts.append(f"{i}. {achievement['achievement']} ({achievement['company']})")
+        
+        # 職歴詳細
+        raw_data = data.get('raw_data', {})
+        career_history = raw_data.get('career_history', [])
+        if career_history:
+            formatted_parts.append("\n### 職歴詳細（時系列）")
+            for job in career_history[:3]:  # 直近3社まで
+                period = f"{job.get('period', {}).get('start', '不明')} - {job.get('period', {}).get('end', '現在')}"
+                formatted_parts.append(f"\n**{period}: {job.get('company', '不明')} - {job.get('role', '不明')}**")
+                if job.get('responsibilities'):
+                    formatted_parts.append("担当業務:")
+                    for resp in job['responsibilities'][:3]:
+                        formatted_parts.append(f"- {resp}")
+                if job.get('achievements'):
+                    formatted_parts.append("実績:")
+                    for ach in job['achievements'][:2]:
+                        formatted_parts.append(f"- {ach}")
+        
+        return '\n'.join(formatted_parts) if formatted_parts else ""
     
     def _format_structured_job_data(self, state: ResearchState) -> str:
         """構造化された求人データをフォーマット"""

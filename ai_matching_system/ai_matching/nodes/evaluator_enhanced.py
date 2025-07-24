@@ -14,7 +14,7 @@ from ..utils.dynamic_weight_adjuster import DynamicWeightAdjuster, WeightProfile
 from ..utils.uncertainty_quantifier import UncertaintyQuantifier
 from ..utils.contradiction_resolver import ContradictionResolver
 from ..utils.meta_learner import MetaLearner
-from ..utils.career_continuity_analyzer import CareerContinuityAnalyzer
+from ..utils.career_continuity_analyzer_v2 import CareerContinuityAnalyzerV2
 from ..utils.age_experience_analyzer import AgeExperienceAnalyzer
 
 
@@ -44,7 +44,7 @@ class EnhancedEvaluatorNode(BaseNode):
         self.meta_learner = MetaLearner()
         
         # キャリア継続性分析器の初期化（LLMモードを有効化）
-        self.career_analyzer = CareerContinuityAnalyzer(use_llm=True, gemini_api_key=api_key)
+        self.career_analyzer = CareerContinuityAnalyzerV2(use_llm=True, gemini_api_key=api_key)
         
         # 年齢・経験社数分析器の初期化
         self.age_experience_analyzer = AgeExperienceAnalyzer()
@@ -417,13 +417,16 @@ class EnhancedEvaluatorNode(BaseNode):
 - スキル保持率: {career_assessment.skill_retention_score:.0%}
 - 推奨減点率: {career_assessment.penalty_score:.0%}
 
-## キャリア継続性の評価指針
-1. 直近6ヶ月以内に関連経験がある場合：減点なし
-2. 7-12ヶ月のブランク：軽度の減点（スキル維持確認が必要）
-3. 13-24ヶ月のブランク：中程度の減点（スキル更新が必要）
-4. 25ヶ月以上のブランク：重度の減点（再学習が必要）
-5. キャリアチェンジがある場合：追加で15%減点
-6. 部署異動がある場合：追加で5%減点
+## キャリア継続性の評価指針（転職市場の実態に基づく）
+1. 直近3ヶ月以内のブランク：正常な転職活動期間（減点なし）
+2. 4-6ヶ月のブランク：許容範囲内（5%減点）
+3. 7-12ヶ月のブランク：説明が必要（10%減点）
+4. 13-24ヶ月のブランク：要確認（15%減点）
+5. 25ヶ月以上のブランク：詳細な確認必要（20%減点）
+6. キャリアチェンジ：転用可能スキルに応じて0-15%減点（スキル保持率が高ければ軽減）
+7. 部署異動：3%減点（軽微な影響）
+
+※転用可能スキル（コミュニケーション、問題解決、リーダーシップ等）が高い場合は減点を軽減
 
 # 年齢・経験社数分析結果
 ## 基本情報

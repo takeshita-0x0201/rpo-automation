@@ -175,24 +175,40 @@ class DynamicWeightAdjuster:
         """業界情報を抽出"""
         # 構造化データから
         if structured_data and structured_data.get('basic_info', {}).get('industry'):
-            return structured_data['basic_info']['industry']
+            industry = structured_data['basic_info']['industry']
+            print(f"    [WeightAdjuster] 構造化データから業界を取得: {industry}")
+            return industry
         
         # job_descriptionから抽出
         text = job_data.get('job_description', '') + ' ' + job_data.get('title', '')
         
-        # 業界キーワードをチェック
+        # より具体的な業界キーワードを優先的にチェック（順序を変更）
         industries = {
-            "IT・テクノロジー": ["IT", "テクノロジー", "ソフトウェア", "システム", "Web", "アプリ"],
-            "金融・銀行": ["金融", "銀行", "証券", "保険", "ファイナンス"],
-            "スタートアップ": ["スタートアップ", "ベンチャー", "創業", "急成長"],
-            "製造業": ["製造", "メーカー", "工場", "生産", "品質管理"],
-            "コンサルティング": ["コンサル", "戦略", "アドバイザリー", "支援"]
+            "金融・銀行": ["金融", "銀行", "証券", "保険", "ファイナンス", "投資", "資産運用"],
+            "製造業": ["製造", "メーカー", "工場", "生産", "品質管理", "製品開発", "量産"],
+            "コンサルティング": ["コンサル", "戦略立案", "アドバイザリー", "経営支援", "業務改善"],
+            "スタートアップ": ["スタートアップ", "ベンチャー", "創業", "急成長", "新規事業"],
+            "小売・流通": ["小売", "流通", "販売", "店舗", "EC", "リテール"],
+            "医療・ヘルスケア": ["医療", "病院", "クリニック", "製薬", "ヘルスケア", "医薬品"],
+            "不動産": ["不動産", "建設", "ゼネコン", "デベロッパー", "賃貸", "売買"],
+            "IT・テクノロジー": ["ソフトウェア開発", "プログラミング", "エンジニア", "IT企業", "テック企業", "SaaS", "AI", "機械学習"]
         }
         
+        # デバッグ: どのキーワードがマッチしたか記録
+        matched_industries = []
         for industry, keywords in industries.items():
-            if any(kw in text for kw in keywords):
-                return industry
+            matched_keywords = [kw for kw in keywords if kw in text]
+            if matched_keywords:
+                matched_industries.append((industry, matched_keywords))
+                print(f"    [WeightAdjuster] {industry}のキーワードがマッチ: {matched_keywords}")
         
+        # 最も多くのキーワードがマッチした業界を選択
+        if matched_industries:
+            best_match = max(matched_industries, key=lambda x: len(x[1]))
+            print(f"    [WeightAdjuster] 最終的に選択された業界: {best_match[0]}")
+            return best_match[0]
+        
+        print(f"    [WeightAdjuster] 業界を特定できませんでした")
         return ""
     
     def _extract_role(self, job_data: Dict, structured_data: Optional[Dict]) -> str:
