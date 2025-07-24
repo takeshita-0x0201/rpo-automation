@@ -126,14 +126,37 @@ class AIMatchingService:
                     
                     # AIマッチング実行
                     if self.matcher and hasattr(self.matcher, 'match_candidate_direct'):
+                        # 数値パラメータの安全な変換
+                        def safe_int_convert(value):
+                            if value is None:
+                                return None
+                            try:
+                                return int(value)
+                            except (ValueError, TypeError):
+                                return None
+                        
                         # 直接テキストを渡す
                         print(f"[AI Matching] Using real AI matching for candidate {candidate.get('id')}")
+                        print(f"[AI Matching] Candidate info - age: {candidate.get('age')}, gender: {candidate.get('gender')}, company: {candidate.get('candidate_company')}")
+                        
+                        # 数値パラメータを安全に変換
+                        candidate_age = safe_int_convert(candidate.get('age'))
+                        enrolled_company_count = safe_int_convert(candidate.get('enrolled_company_count'))
+                        
                         result = await asyncio.to_thread(
                             self.matcher.match_candidate_direct,
                             resume_text=resume_text,
                             job_description_text=job_desc_text,
                             job_memo_text=job_memo_text,
-                            max_cycles=3
+                            max_cycles=3,
+                            # 候補者情報を追加
+                            candidate_id=candidate.get('candidate_id'),
+                            candidate_age=candidate_age,
+                            candidate_gender=candidate.get('gender'),
+                            candidate_company=candidate.get('candidate_company'),
+                            enrolled_company_count=enrolled_company_count,
+                            # 構造化データを追加
+                            structured_job_data=requirement.get('structured_data')
                         )
                         print(f"[AI Matching] Real result - Score: {result.get('final_score')}, Rec: {result.get('final_judgment', {}).get('recommendation')}")
                     else:
@@ -167,7 +190,17 @@ class AIMatchingService:
     async def _get_requirement(self, requirement_id: str) -> Optional[Dict]:
         """要件情報を取得"""
         response = self.supabase.table('job_requirements').select('*, client:clients(*)').eq('id', requirement_id).single().execute()
-        return response.data
+        requirement = response.data
+        
+        # デバッグ: 取得したデータを確認
+        if requirement:
+            print(f"[AI Matching] Requirement {requirement_id} data:")
+            print(f"  - title: {requirement.get('title', 'N/A')}")
+            print(f"  - job_description length: {len(requirement.get('job_description', '')) if requirement.get('job_description') else 0}")
+            print(f"  - memo length: {len(requirement.get('memo', '')) if requirement.get('memo') else 0}")
+            print(f"  - structured_data keys: {list(requirement.get('structured_data', {}).keys()) if requirement.get('structured_data') else []}")
+        
+        return requirement
     
     async def _get_candidates_for_job(self, job: Dict) -> List[Dict]:
         """ジョブに関連する候補者を取得"""
@@ -205,11 +238,20 @@ class AIMatchingService:
     
     
     def _format_job_description(self, requirement: Dict) -> str:
-        """要件をジョブ記述文形式に変換（新しい構造化データ対応）"""
+        """要件をジョブ記述文形式に変換（job_descriptionと構造化データを統合）"""
         sections = []
         
-        # 構造化データを取得
+        # job_descriptionフィールドがある場合は、それを最初に追加
+        if requirement.get('job_description'):
+            print(f"[AI Matching] Including full job_description field: {len(requirement['job_description'])} chars")
+            sections.append(requirement['job_description'])
+            sections.append("\n" + "="*50 + "\n")  # セパレータ
+        
+        # 構造化データも追加（補足情報として）
         structured = requirement.get('structured_data', {})
+        if structured:
+            print(f"[AI Matching] Adding structured data as supplement")
+            sections.append("【構造化情報】\n")
         
         # 新しい構造化データフォーマットの場合
         if 'basic_info' in structured:

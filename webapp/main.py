@@ -20,7 +20,7 @@ from typing import Optional
 
 # ルーターのインポート
 from routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings, csv_upload, media_platforms, admin_media_platforms
-from routers import matching_api, job_execution, csv_api, sync_api, sync_monitor, client_evaluations
+from routers import job_execution, csv_api, sync_api, sync_monitor, client_evaluations, feedback_api  # , matching_api
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -53,7 +53,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(auth_extension.router, tags=["extension-auth"])  # 拡張機能用認証
 app.include_router(extension_api.router, tags=["extension-api"])  # 拡張機能用API
 app.include_router(job_execution.router, tags=["job-execution"])  # ジョブ実行管理
-app.include_router(matching_api.router, tags=["matching"])  # AIマッチング
+# app.include_router(matching_api.router, tags=["matching"])  # AIマッチング
 app.include_router(requirements.router, prefix="/api/requirements", tags=["requirements"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/api/results", tags=["results"])
@@ -86,6 +86,8 @@ app.include_router(sync_api.router, tags=["sync"])
 app.include_router(sync_monitor.router, tags=["sync_monitor"])
 # クライアント評価API
 app.include_router(client_evaluations.router, prefix="/api/client-evaluations", tags=["client_evaluations"])
+# フィードバックAPI
+app.include_router(feedback_api.router, prefix="/api/feedback", tags=["feedback"])
 
 # ベクトルDB管理（インポートを追加）
 # Vector admin removed - functionality moved to Edge Functions
@@ -152,28 +154,37 @@ async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_curren
         jobs_response = supabase.table('jobs').select('*').order('job_id', desc=False).execute()
         jobs = jobs_response.data if jobs_response.data else []
         
-        # 対象候補者数を追加
+        # 対象候補者数を追加（簡素化版）
         for job in jobs:
-            
-            # 対象候補者数を取得
-            if job.get('status') == 'completed':
-                # 完了したジョブは実際の処理数を表示
-                job['candidate_count'] = job.get('candidate_count', 0)
-            elif job.get('status') in ['pending', 'ready', 'running']:
-                # 未実行・実行中のジョブは推定値を取得
-                job_params = job.get('parameters', {})
-                client_id = job.get('client_id')
-                requirement_id = job.get('requirement_id')
-                
-                # Supabaseから実際の候補者数を取得
-                actual_count = candidate_counter.count_candidates(job_params, client_id, requirement_id)
-                if actual_count is not None:
-                    job['candidate_count'] = actual_count
+            try:
+                # 基本的なcandidate_countのみ設定（既存ロジック）
+                if job.get('status') == 'completed':
+                    job['candidate_count'] = job.get('candidate_count', 0)
+                elif job.get('status') in ['pending', 'ready', 'running']:
+                    job_params = job.get('parameters', {})
+                    client_id = job.get('client_id')
+                    requirement_id = job.get('requirement_id')
+                    
+                    actual_count = candidate_counter.count_candidates(job_params, client_id, requirement_id)
+                    if actual_count is not None:
+                        job['candidate_count'] = actual_count
+                    else:
+                        job['candidate_count'] = candidate_counter.get_error_message()
                 else:
-                    # Supabase接続エラー時はエラーメッセージを表示
-                    job['candidate_count'] = candidate_counter.get_error_message()
-            else:
+                    job['candidate_count'] = 0
+                
+                # 分数表記は後で実装予定として、今は基本値を設定
+                job['evaluated_count'] = 0
+                job['total_candidates'] = 0
+                job['progress_fraction'] = "0/0"
+                
+            except Exception as e:
+                print(f"Error processing job {job.get('id', 'unknown')}: {e}")
+                # エラー時はデフォルト値を設定
                 job['candidate_count'] = 0
+                job['evaluated_count'] = 0
+                job['total_candidates'] = 0
+                job['progress_fraction'] = "0/0"
         
         # ステータス別カウント
         running_count = sum(1 for j in jobs if j.get('status') == 'running')
@@ -404,7 +415,7 @@ async def admin_jobs_create(
         error_msg = urllib.parse.quote(str(e))
         return RedirectResponse(url=f"/admin/jobs/new?error=create_failed&message={error_msg}", status_code=303)
 
-@app.post("/admin/jobs/{job_id}/execute")
+@app.post("/admin/api/jobs/{job_id}/execute")
 async def admin_job_execute(job_id: str, request: Request, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """管理者 - ジョブ実行（直接実行）"""
     if not user or user.get("role") != "admin":
@@ -455,7 +466,7 @@ async def admin_job_execute(job_id: str, request: Request, user: Optional[dict] 
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": f"ジョブの実行開始に失敗しました: {str(e)}"})
 
-@app.post("/admin/jobs/{job_id}/cancel")
+@app.post("/admin/api/jobs/{job_id}/cancel")
 async def admin_job_cancel(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """管理者 - ジョブ停止"""
     if not user or user.get("role") != "admin":
@@ -484,7 +495,7 @@ async def admin_job_cancel(job_id: str, user: Optional[dict] = Depends(get_curre
         print(f"Error cancelling job: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.delete("/admin/jobs/{job_id}/delete")
+@app.delete("/admin/api/jobs/{job_id}/delete")
 async def admin_job_delete(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """管理者 - ジョブ削除"""
     if not user or user.get("role") != "admin":
@@ -530,32 +541,42 @@ async def manager_jobs(request: Request, user: Optional[dict] = Depends(get_curr
         jobs_response = supabase.table('jobs').select('*, client:clients(name)').order('created_at', desc=True).execute()
         jobs = jobs_response.data if jobs_response.data else []
         
-        # クライアント名を展開と対象候補者数を追加
+        # クライアント名を展開と対象候補者数を追加（簡素化版）
         for job in jobs:
             if 'client' in job and job['client']:
                 job['client_name'] = job['client']['name']
             else:
                 job['client_name'] = 'N/A'
             
-            # 対象候補者数を取得
-            if job.get('status') == 'completed':
-                # 完了したジョブは実際の処理数を表示
-                job['candidate_count'] = job.get('candidate_count', 0)
-            elif job.get('status') in ['pending', 'ready', 'running']:
-                # 未実行・実行中のジョブは推定値を取得
-                job_params = job.get('parameters', {})
-                client_id = job.get('client_id')
-                requirement_id = job.get('requirement_id')
-                
-                # Supabaseから実際の候補者数を取得
-                actual_count = candidate_counter.count_candidates(job_params, client_id, requirement_id)
-                if actual_count is not None:
-                    job['candidate_count'] = actual_count
+            try:
+                # 基本的なcandidate_countのみ設定（既存ロジック）
+                if job.get('status') == 'completed':
+                    job['candidate_count'] = job.get('candidate_count', 0)
+                elif job.get('status') in ['pending', 'ready', 'running']:
+                    job_params = job.get('parameters', {})
+                    client_id = job.get('client_id')
+                    requirement_id = job.get('requirement_id')
+                    
+                    actual_count = candidate_counter.count_candidates(job_params, client_id, requirement_id)
+                    if actual_count is not None:
+                        job['candidate_count'] = actual_count
+                    else:
+                        job['candidate_count'] = candidate_counter.get_error_message()
                 else:
-                    # Supabase接続エラー時はエラーメッセージを表示
-                    job['candidate_count'] = candidate_counter.get_error_message()
-            else:
+                    job['candidate_count'] = 0
+                
+                # 分数表記は後で実装予定として、今は基本値を設定
+                job['evaluated_count'] = 0
+                job['total_candidates'] = 0
+                job['progress_fraction'] = "0/0"
+                
+            except Exception as e:
+                print(f"Error processing job {job.get('id', 'unknown')}: {e}")
+                # エラー時はデフォルト値を設定
                 job['candidate_count'] = 0
+                job['evaluated_count'] = 0
+                job['total_candidates'] = 0
+                job['progress_fraction'] = "0/0"
         
         # ステータス別カウント
         running_count = sum(1 for j in jobs if j.get('status') == 'running')
@@ -670,7 +691,7 @@ async def manager_jobs_create(
         print(f"Error creating job: {e}")
         return RedirectResponse(url="/manager/jobs/new?error=create_failed", status_code=303)
 
-@app.post("/manager/jobs/{job_id}/execute")
+@app.post("/manager/api/jobs/{job_id}/execute")
 async def manager_job_execute(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """マネージャー - ジョブ実行"""
     if not user or user.get("role") != "manager":
@@ -699,7 +720,7 @@ async def manager_job_execute(job_id: str, user: Optional[dict] = Depends(get_cu
         print(f"Error executing job: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.post("/manager/jobs/{job_id}/cancel")
+@app.post("/manager/api/jobs/{job_id}/cancel")
 async def manager_job_cancel(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """マネージャー - ジョブ停止"""
     if not user or user.get("role") != "manager":
@@ -728,7 +749,7 @@ async def manager_job_cancel(job_id: str, user: Optional[dict] = Depends(get_cur
         print(f"Error cancelling job: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.delete("/manager/jobs/{job_id}/delete")
+@app.delete("/manager/api/jobs/{job_id}/delete")
 async def manager_job_delete(job_id: str, user: Optional[dict] = Depends(get_current_user_from_cookie)):
     """マネージャー - ジョブ削除"""
     if not user or user.get("role") != "manager":

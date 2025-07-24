@@ -25,9 +25,14 @@
     <i class="bi bi-play-circle"></i> ジョブの実行を開始しました。
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
-{% elif request.query_params.get('success') == 'cancelled' %}
+{% elif request.query_params.get('success') == 'stopped' %}
 <div class="alert alert-warning alert-dismissible fade show" role="alert">
-    <i class="bi bi-stop-circle"></i> ジョブを停止しました。
+    <i class="bi bi-pause-circle"></i> ジョブを停止しました。実行ボタンで再開できます。
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% elif request.query_params.get('success') == 'cancelled' %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <i class="bi bi-x-circle"></i> ジョブをキャンセルしました。
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 {% elif request.query_params.get('success') == 'deleted' %}
@@ -107,7 +112,9 @@
                 </td>
                 <td>{{ job.name or "-" }}</td>
                 <td>
-                    {% if job.candidate_count is defined %}
+                    {% if job.progress_fraction is defined %}
+                        <span class="badge bg-info">{{ job.progress_fraction }}</span>
+                    {% elif job.candidate_count is defined %}
                         <span class="badge bg-info">{{ job.candidate_count }}人</span>
                     {% else %}
                         <span class="text-muted">-</span>
@@ -156,9 +163,13 @@
                             <i class="bi bi-play-circle"></i> 実行
                         </button>
                         {% elif job.status == "running" %}
+                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                onclick="stopJob('{{ job.id }}')">
+                            <i class="bi bi-pause-circle"></i> 停止
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-danger"
                                 onclick="cancelJob('{{ job.id }}')">
-                            <i class="bi bi-stop-circle"></i> 停止
+                            <i class="bi bi-x-circle"></i> キャンセル
                         </button>
                         {% endif %}
                         {% if job.status in ["completed", "failed", "pending"] %}
@@ -191,11 +202,12 @@ function executeJob(jobId) {
         const buttons = document.querySelectorAll('button');
         buttons.forEach(btn => btn.disabled = true);
         
-        fetch(`{{ base_path }}/jobs/${jobId}/execute`, { 
+        fetch(`/api/jobs/${jobId}/execute`, { 
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'same-origin'  // クッキーを含める
         })
         .then(response => {
             console.log('Response status:', response.status);
@@ -226,24 +238,25 @@ function executeJob(jobId) {
     }
 }
 
-function cancelJob(jobId) {
-    if (confirm('このジョブを停止してもよろしいですか？')) {
+function stopJob(jobId) {
+    if (confirm('このジョブを停止してもよろしいですか？\n停止後は実行ボタンで再開できます。')) {
         // ボタンを無効化
         const buttons = document.querySelectorAll('button');
         buttons.forEach(btn => btn.disabled = true);
         
-        fetch(`{{ base_path }}/jobs/${jobId}/cancel`, { 
+        fetch(`/api/jobs/${jobId}/stop`, { 
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'same-origin'  // クッキーを含める
         })
         .then(response => {
             if (response.ok) {
-                window.location.href = `{{ base_path }}/jobs?success=cancelled`;
+                window.location.href = `{{ base_path }}/jobs?success=stopped`;
             } else {
                 return response.json().then(data => {
-                    alert(`ジョブの停止に失敗しました: ${data.error || '不明なエラー'}`);
+                    alert(`ジョブの停止に失敗しました: ${data.detail || data.error || '不明なエラー'}`);
                     buttons.forEach(btn => btn.disabled = false);
                 });
             }
@@ -256,17 +269,49 @@ function cancelJob(jobId) {
     }
 }
 
+function cancelJob(jobId) {
+    if (confirm('このジョブを完全にキャンセルしてもよろしいですか？\n※キャンセル後は再開できません。')) {
+        // ボタンを無効化
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => btn.disabled = true);
+        
+        fetch(`/api/jobs/${jobId}/cancel`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin'  // クッキーを含める
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = `{{ base_path }}/jobs?success=cancelled`;
+            } else {
+                return response.json().then(data => {
+                    alert(`ジョブのキャンセルに失敗しました: ${data.detail || data.error || '不明なエラー'}`);
+                    buttons.forEach(btn => btn.disabled = false);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('ジョブのキャンセルに失敗しました: ネットワークエラー');
+            buttons.forEach(btn => btn.disabled = false);
+        });
+    }
+}
+
 function deleteJob(jobId) {
     if (confirm('このジョブを削除してもよろしいですか？\n※この操作は取り消せません。')) {
         // ボタンを無効化
         const buttons = document.querySelectorAll('button');
         buttons.forEach(btn => btn.disabled = true);
         
-        fetch(`{{ base_path }}/jobs/${jobId}/delete`, { 
+        fetch(`{{ base_path }}/api/jobs/${jobId}/delete`, { 
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'same-origin'  // クッキーを含める
         })
         .then(response => {
             if (response.ok) {

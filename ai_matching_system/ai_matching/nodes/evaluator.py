@@ -3,19 +3,56 @@
 """
 
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 import google.generativeai as genai
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
-from .base import BaseNode, ResearchState, EvaluationResult
+from .base import BaseNode, ResearchState, EvaluationResult, ScoreDetail
+from ..utils.semantic_guards import SemanticGuards
 
 
 class EvaluatorNode(BaseNode):
     """候補者を評価するノード"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
         super().__init__("Evaluator")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # Supabaseクライアントの初期化
+        self.supabase_client = None
+        
+        # dotenvから環境変数を読み込む（親ディレクトリの.envも探す）
+        from dotenv import load_dotenv
+        from pathlib import Path
+        
+        # 現在のディレクトリから上位に遡って.envを探す
+        current_path = Path(__file__).resolve()
+        for parent in [current_path.parent, current_path.parent.parent, current_path.parent.parent.parent, current_path.parent.parent.parent.parent]:
+            env_path = parent / '.env'
+            if env_path.exists():
+                print(f"[EvaluatorNode初期化] .envファイルを発見: {env_path}")
+                load_dotenv(env_path)
+                break
+        else:
+            # 見つからない場合はデフォルトの動作
+            load_dotenv()
+        
+        # デバッグ: 環境変数の状態を確認
+        env_url = os.getenv("SUPABASE_URL")
+        env_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        print(f"[EvaluatorNode初期化] SUPABASE_URL from env: {env_url is not None}")
+        print(f"[EvaluatorNode初期化] SUPABASE_KEY/ANON_KEY from env: {env_key is not None}")
+        
+        if supabase_url and supabase_key:
+            print(f"[EvaluatorNode初期化] 引数から Supabase設定を使用")
+            self.supabase_client = create_client(supabase_url, supabase_key)
+        elif env_url and env_key:
+            print(f"[EvaluatorNode初期化] 環境変数から Supabase設定を使用")
+            self.supabase_client = create_client(env_url, env_key)
+        else:
+            print(f"[EvaluatorNode初期化] Supabase設定が見つかりません")
     
     async def process(self, state: ResearchState) -> ResearchState:
         """候補者を現在の情報で評価"""
@@ -38,36 +75,79 @@ class EvaluatorNode(BaseNode):
         if hasattr(state, 'rag_insights') and state.rag_insights:
             print(f"  類似ケースの洞察を活用")
         
+        # 候補者情報を取得
+        candidate_info = await self._get_candidate_info(state)
+        
+        # セマンティックガードによる事前チェック
+        guard_insights = self._apply_semantic_guards(state)
+        
+        # 構造化データの存在チェック
+        has_structured_data = hasattr(state, 'structured_job_data') and state.structured_job_data
+        structured_data_text = self._format_structured_job_data(state) if has_structured_data else ''
+        
         # 最適化されたプロンプト
         prompt = f"""あなたは経験豊富な採用コンサルタントです。
 クライアント企業の採用成功のため、候補者を適切に評価してください。
+
+# 重要な評価ルール
+1. **構造化データを最優先で使用**
+   - 求人の構造化データ（必須スキル、歓迎スキル、給与レンジ等）がある場合は、それを基準に評価
+   - 構造化データで判断できる項目は、求人票の自由記述（job_description）より優先
+2. **求人票の自由記述は補助的に使用**
+   - 構造化データに含まれない要件の確認
+   - 構造化データの解釈が必要な場合の補足情報
+   - 企業文化や詳細な業務内容の理解
 
 # 入力データ
 ## 候補者レジュメ
 {state.resume}
 
-## 求人要件
+## 候補者情報
+{candidate_info}
+
+{structured_data_text}
+
+## 求人票（自由記述）
+※構造化データで判断できない項目の参照用
 {state.job_description}
 
 ## 追加情報
 {state.job_memo}
+
 {additional_info}
 {history_text}
 {rag_insights_text}
+{guard_insights}
 
-# 評価方針（厳格基準）
-1. 必須要件は厳格に検証し、不明確な場合は低評価とする
-2. 直接経験のみを評価対象とし、類似経験は限定的にのみ認める
-3. レジュメに記載された事実・経歴のみを評価（推測・期待・可能性は一切考慮しない）
+# 評価方針（改善版 - セマンティック理解重視）
+1. 必須要件は業務本質を理解した上で評価する
+   - 直接的な記載がなくても、実質的に同等の経験があれば認める
+   - 例：「法人営業」の記載がなくても、B2B取引の実績があれば営業経験として評価
+2. 類似経験・関連スキルを適切に評価する
+   - 同一業界内での隣接領域：高い評価（80-90%）
+   - 異業界でも本質的に同じスキル：中程度の評価（60-80%）
+   - 間接的に関連する経験：限定的に評価（40-60%）
+3. レジュメから読み取れる能力・実績を総合的に判断
+   - 明示的な記載を重視しつつ、文脈から合理的に推測できる内容も考慮
+   - ただし、根拠のない楽観的な推測は避ける
 4. 歓迎要件の充足は明確な加点要素として評価する
 5. 求人メモから読み取れる「本当に求める人材像」を重視する
-6. 直近の経験を重視し、過去の経験は時期に応じて大幅に減点する
-7. キャリアチェンジや異動で直近に異なる業務をしている場合は厳しく減点
-8. 具体的な業務内容・成果が不明な経験は評価しない
+6. 経験の時期による評価調整（緩和）
+   - 直近3年以内：100%
+   - 3-5年前：80%（20%減点）
+   - 5-10年前：60%（40%減点）
+   - 10年以上前：40%（60%減点）
+7. キャリアチェンジは文脈に応じて評価
+   - 関連性のある転職：ペナルティなし
+   - スキル転用可能な異動：限定的な減点（10-20%）
+8. 業務内容は総合的に判断
+   - 具体的な記載があれば高評価
+   - 概要のみでも業界標準的な業務なら中程度の評価
 
 # 評価基準と配点（目安）
 ## 必須要件（45%）
-- 求人票の「求める経験・スキル」「必須」項目
+- **構造化データの必須スキル（required_skills）を最優先で評価**
+- 構造化データがない場合のみ、求人票の「求める経験・スキル」「必須」項目を使用
 - 直接的な経験が明確に確認できる場合：満点
 - 類似経験での代替（以下の場合のみ認める）：最大50%の得点
   * 同一業界内での隣接領域の経験
@@ -81,13 +161,14 @@ class EvaluatorNode(BaseNode):
 - 必須要件の50%以上が不明確/欠如：総合スコアから-25点
 - 中核的な必須要件（役職・資格等）の欠如：総合スコアから-30点
 
-### 重要：経験の時期による調整（厳格化）
+### 重要：経験の時期による調整（緩和）
 - 直近3年以内の経験：満点（100%）
-- 3-5年前の経験：30%減点（70%）
-- 5-10年前の経験：50%減点（50%）
-- 10年以上前の経験：70%減点（30%）
-- キャリアチェンジ/異動により直近で異なる業務の場合は追加で30%減点
-- 具体的な業務内容が不明な場合は追加で20%減点
+- 3-5年前の経験：20%減点（80%）
+- 5-10年前の経験：40%減点（60%）
+- 10年以上前の経験：60%減点（40%）
+- 関連性のあるキャリアチェンジ：減点なし
+- スキル転用可能な異動：10-20%減点
+- 業務内容の記載が概要レベル：10%減点（業界標準的な業務の場合）
 
 ## 実務遂行能力（25%）
 - 業務を遂行できる実質的な能力
@@ -95,7 +176,8 @@ class EvaluatorNode(BaseNode):
 - 具体的な数値や成果があれば加点
 
 ## 歓迎要件（15%）
-- 求人票の「歓迎する経験・スキル」「尚可」項目
+- **構造化データの歓迎スキル（preferred_skills）を最優先で評価**
+- 構造化データがない場合のみ、求人票の「歓迎する経験・スキル」「尚可」項目を使用
 - 1つ充足ごとに加点（最大15%）
 - 特に重要な歓迎要件は2倍の加点
 - 必須要件を補強する歓迎要件は追加加点
@@ -125,26 +207,57 @@ class EvaluatorNode(BaseNode):
 
 ※重要：突出した経歴（5%）は本当に希少な場合のみ加点。通常は必須要件と実務能力で評価
 
-# 厳格な評価実施ルール
-1. 禁止事項（これらの表現・考え方は一切使用禁止）：
-   - 「可能性がある」「期待できる」「思われる」「推測される」
-   - 「面接で確認すれば」「入社後に習得可能」「ポテンシャルがある」
-   - 「おそらく」「恐らく」「だろう」「かもしれない」
+# バランスの取れた評価実施ルール
+1. 評価の基本姿勢：
+   - レジュメの記載内容を基本としつつ、文脈から合理的に読み取れる内容も考慮
+   - 業務の本質的な類似性を理解し、適切に評価
+   - 根拠のない楽観的な推測は避けるが、論理的な推論は許容
 
-2. 必須の評価姿勢：
-   - レジュメに明記されていないスキル・経験は「ない」と判断
-   - 不明確な記載は低評価の根拠とする
-   - 類似経験は厳密に判定し、安易に代替として認めない
-   - CFO経験≠経理経験、マネジメント経験≠実務経験として厳密に区別
+2. セマンティック理解の適用：
+   - 用語の違いではなく、業務内容の本質で判断
+   - 営業経験の判断例：
+     * 「法人営業」≈「B2B営業」≈「企業向け営業」≈「アカウント営業」
+     * 「担当案件」「主担当」「クライアント対応」＋ 売上/契約の文脈 = 営業要素あり
+     * 「新規開拓」「既存顧客フォロー」「提案」「受注」= 営業活動
+   - 財務・経理の関連性：
+     * 「経理」経験は「財務」要件の一部として評価可能
+     * 「管理会計」「予算管理」は経営企画要素として評価
+   - マネジメント経験の判断：
+     * 「プロジェクト管理」「チームリード」「統括」= マネジメント要素
+     * 「作業者の進捗管理」「レクチャー」「フォロー」= 実質的なマネジメント
 
-3. 減点の明確化：
-   - 必須要件が不明確：-10点以上
-   - 直近経験でない：時期に応じて大幅減点
-   - 具体的成果が不明：-5点以上
+3. 評価の透明性：
+   - 必須要件との合致度を明確に示す
+   - 類似経験で評価した場合はその旨を明記
+   - 減点理由は具体的に説明
 
 # 出力フォーマット
 適合度スコア: [0-100の整数]
 確信度: [低/中/高]
+
+## スコア内訳
+### 必須要件（45点満点）
+- [構造化データの各必須スキル項目]: [点数]/[配点] - [根拠となるレジュメの記載]
+- ※構造化データがない場合は求人票から抽出した必須要件を記載
+- 小計: [実際の点数]/45点
+
+### 実務遂行能力（25点満点）
+- [評価項目]: [点数]/[配点] - [根拠となる実績・経験]
+- 小計: [実際の点数]/25点
+
+### 歓迎要件（15点満点）
+- [構造化データの各歓迎スキル項目]: [点数]/[配点] - [該当する経験]
+- ※構造化データがない場合は求人票から抽出した歓迎要件を記載
+- 小計: [実際の点数]/15点
+
+### 組織適合性（10点満点）
+- 企業規模適応: [点数]/5点 - [過去の所属企業と求人企業の比較]
+- 文化適合: [点数]/5点 - [根拠]
+- 小計: [実際の点数]/10点
+
+### 突出した経歴（5点満点）
+- [特筆すべき実績]: [点数]/5点
+- 小計: [実際の点数]/5点
 
 主な強み:
 - [必須要件との合致点を優先的に記載]
@@ -161,10 +274,13 @@ class EvaluatorNode(BaseNode):
 
 評価サマリー:
 [以下を含む総合評価]
-- 必須要件の充足度（○個中○個充足、類似経験での代替○個、完全欠如○個）
+- 構造化データに基づく評価結果
+  * 必須スキル（required_skills）の充足度: ○個中○個充足
+  * 歓迎スキル（preferred_skills）の充足度: ○個中○個充足
+  * 経験年数要件（experience_years_min）の充足状況
+- 構造化データで判断できなかった項目（求人票から補足的に評価）
 - 【重要】必須要件不足の場合、その業務遂行上の具体的影響
 - 経験の直近性（直近の経験か、過去の経験かを明記）
-- 歓迎要件の充足度（○個中○個充足）
 - 突出した経歴（ある場合は「○○の実績は採用市場でも希少」等と明記）
 - 企業規模適応性（経歴企業と求人企業の規模差があれば明記）
 - 企業が本質的に求める人材像との適合性（過去実績ベース）
@@ -172,6 +288,8 @@ class EvaluatorNode(BaseNode):
 - 総合的な推薦判断（必須要件不足がある場合は、その重大性を明記）
 
 # 評価の注意点
+- **構造化データ（required_skills、preferred_skills）を最優先で使用**
+- 構造化データで判断できない項目のみ、求人票（job_description）を参照
 - 必須要件と歓迎要件を明確に区別
 - 必須要件の不足は致命的な問題として扱う
 - 必須要件を1つでも満たさない場合、その影響を懸念点で詳細に説明
@@ -371,3 +489,97 @@ class EvaluatorNode(BaseNode):
             summary=summary,
             raw_response=text
         )
+    
+    async def _get_candidate_info(self, state: ResearchState) -> str:
+        """候補者基本情報を取得（stateから直接取得）"""
+        print("    [候補者情報取得] 開始")
+        
+        # stateから直接候補者情報を取得
+        info_parts = []
+        
+        if hasattr(state, 'candidate_age') and state.candidate_age is not None:
+            info_parts.append(f"年齢: {state.candidate_age}歳")
+            print(f"    [候補者情報取得] 年齢: {state.candidate_age}歳")
+        
+        if hasattr(state, 'candidate_gender') and state.candidate_gender:
+            info_parts.append(f"性別: {state.candidate_gender}")
+            print(f"    [候補者情報取得] 性別: {state.candidate_gender}")
+        
+        if hasattr(state, 'candidate_company') and state.candidate_company:
+            info_parts.append(f"現在の所属: {state.candidate_company}")
+            print(f"    [候補者情報取得] 現在の所属: {state.candidate_company}")
+        
+        if hasattr(state, 'enrolled_company_count') and state.enrolled_company_count is not None:
+            info_parts.append(f"在籍企業数: {state.enrolled_company_count}社")
+            print(f"    [候補者情報取得] 在籍企業数: {state.enrolled_company_count}社")
+        
+        if info_parts:
+            return '\n'.join(info_parts)
+        else:
+            print("    [候補者情報取得] 候補者基本情報が提供されていません")
+            return "年齢: 不明（候補者情報が提供されていません）"
+    
+    def _format_structured_job_data(self, state: ResearchState) -> str:
+        """構造化された求人データをフォーマット"""
+        if not hasattr(state, 'structured_job_data') or not state.structured_job_data:
+            return ""
+        
+        data = state.structured_job_data
+        formatted_parts = []
+        
+        formatted_parts.append("## 求人詳細データ（構造化データ）【優先的に使用】")
+        
+        # 基本情報
+        if data.get('position'):
+            formatted_parts.append(f"職種: {data['position']}")
+        if data.get('employment_type'):
+            formatted_parts.append(f"雇用形態: {data['employment_type']}")
+        if data.get('work_location'):
+            formatted_parts.append(f"勤務地: {data['work_location']}")
+        
+        # 給与情報
+        if data.get('salary_min') or data.get('salary_max'):
+            salary_min = data.get('salary_min', '未設定')
+            salary_max = data.get('salary_max', '未設定')
+            formatted_parts.append(f"給与レンジ: {salary_min:,}円 〜 {salary_max:,}円" if isinstance(salary_min, (int, float)) else f"給与レンジ: {salary_min} 〜 {salary_max}")
+        
+        # 必須スキル
+        if data.get('required_skills'):
+            formatted_parts.append("\n### 必須スキル・経験【最重要：これを基準に評価】")
+            for i, skill in enumerate(data['required_skills'], 1):
+                formatted_parts.append(f"{i}. {skill}")
+        
+        # 歓迎スキル
+        if data.get('preferred_skills'):
+            formatted_parts.append("\n### 歓迎スキル・経験【加点要素：これを基準に加点評価】")
+            for i, skill in enumerate(data['preferred_skills'], 1):
+                formatted_parts.append(f"{i}. {skill}")
+        
+        # 最小経験年数
+        if data.get('experience_years_min'):
+            formatted_parts.append(f"\n最小経験年数: {data['experience_years_min']}年以上")
+        
+        return '\n'.join(formatted_parts) if formatted_parts else ""
+    
+    def _apply_semantic_guards(self, state: ResearchState) -> str:
+        """セマンティックガードレールを適用して洞察を生成"""
+        insights = []
+        
+        # 営業経験の検出
+        if hasattr(state, 'job_description') and '営業' in state.job_description:
+            has_sales, confidence, evidence = SemanticGuards.detect_sales_experience(state.resume)
+            
+            if evidence:
+                insights.append("\n### セマンティック分析による営業経験の検出")
+                insights.append(f"営業経験の可能性: {'高' if confidence > 0.7 else '中' if confidence > 0.4 else '低'} (確信度: {confidence:.1%})")
+                insights.append("検出された要素:")
+                for e in evidence[:3]:  # 最大3つまで
+                    insights.append(f"- {e}")
+                
+                if has_sales and confidence < 0.7:
+                    insights.append("※ 間接的な指標から営業要素を検出。詳細な評価が必要")
+        
+        # 職種マッチングの評価（必要に応じて）
+        # ここに追加の分析を実装可能
+        
+        return '\n'.join(insights) if insights else ""

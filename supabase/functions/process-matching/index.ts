@@ -40,7 +40,8 @@ serve(async (req) => {
       const result = await runSimpleMatching({
         jobDescription,
         resume,
-        jobMemo: requirement.structured_data?.job_memo || '',
+        jobMemo: requirement.job_memo || requirement.structured_data?.job_memo || '',
+        candidate,  // 候補者情報全体を渡す
         onProgress: async (progress: number, stage: string) => {
           await updateJobStatus(supabase, jobId, 'processing', progress, stage)
         }
@@ -133,6 +134,18 @@ async function fetchData(supabase: any, requirementId: string, candidateId: stri
 
 // ジョブ記述文のフォーマット
 function formatJobDescription(requirement: any): string {
+  // structured_dataに完全なjob_descriptionがある場合はそれを使用
+  // なければ、個別フィールドから構築
+  if (requirement.structured_data?.job_description_full) {
+    return requirement.structured_data.job_description_full
+  }
+  
+  // job_descriptionフィールドがある場合（完全なテキスト）
+  if (requirement.job_description) {
+    return requirement.job_description
+  }
+  
+  // 個別フィールドから構築（フォールバック）
   const sections = []
   
   // 基本情報
@@ -166,7 +179,32 @@ function formatJobDescription(requirement: any): string {
 
 // 履歴書のフォーマット
 function formatResume(candidate: any): string {
-  return candidate.candidate_resume || ''
+  const sections = []
+  
+  // 候補者IDを先頭に追加（AI側で必要な場合）
+  if (candidate.candidate_id) {
+    sections.push(`ID: ${candidate.candidate_id}`)
+  }
+  
+  // 基本情報
+  const basicInfo = []
+  if (candidate.age) basicInfo.push(`年齢: ${candidate.age}歳`)
+  if (candidate.gender) basicInfo.push(`性別: ${candidate.gender}`)
+  if (candidate.candidate_company) basicInfo.push(`現在の所属: ${candidate.candidate_company}`)
+  if (candidate.enrolled_company_count) basicInfo.push(`在籍企業数: ${candidate.enrolled_company_count}社`)
+  
+  if (basicInfo.length > 0) {
+    sections.push('【基本情報】')
+    sections.push(basicInfo.join('\n'))
+  }
+  
+  // レジュメ本文
+  if (candidate.candidate_resume) {
+    sections.push('【経歴・スキル】')
+    sections.push(candidate.candidate_resume)
+  }
+  
+  return sections.join('\n\n')
 }
 
 // 簡易マッチング実行（Gemini APIを使用）
@@ -174,9 +212,10 @@ async function runSimpleMatching(params: {
   jobDescription: string
   resume: string
   jobMemo: string
+  candidate?: any  // 候補者情報全体
   onProgress: (progress: number, stage: string) => Promise<void>
 }): Promise<any> {
-  const { jobDescription, resume, jobMemo, onProgress } = params
+  const { jobDescription, resume, jobMemo, candidate, onProgress } = params
   
   // Gemini API を使用した評価（簡易版）
   const prompt = `

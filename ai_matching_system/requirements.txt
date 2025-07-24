@@ -10,3 +10,4 @@ pandas>=2.0.0
 aiofiles>=23.0.0
 pinecone>=2.0.0
 tqdm>=4.65.0
+supabase>=2.0.0

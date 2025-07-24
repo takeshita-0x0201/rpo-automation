@@ -2,7 +2,7 @@
 ジョブ実行管理エンドポイント
 AIマッチングジョブの実行を管理
 """
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from typing import Optional
 
 from webapp.dependencies import authenticated_user
@@ -75,12 +75,24 @@ async def get_job_status(
         
         job = job_response.data
         
-        # 評価済み候補者数を取得
-        if job['status'] in ['running', 'completed']:
-            eval_count_response = supabase.table('ai_evaluations').select('id', count='exact').eq('search_id', job_id).execute()
-            job['evaluated_count'] = eval_count_response.count or 0
+        # 総候補者数を取得（candidatesテーブルから）
+        total_candidates_response = supabase.table('candidates').select('id', count='exact').execute()
+        total_candidates = total_candidates_response.count or 0
+        
+        # 評価済み候補者数を取得（ai_evaluationsテーブルから）
+        evaluated_response = supabase.table('ai_evaluations').select('id', count='exact').eq('search_id', job_id).execute()
+        evaluated_count = evaluated_response.count or 0
+        
+        # 分数表記の対象数を追加
+        job['evaluated_count'] = evaluated_count
+        job['total_candidates'] = total_candidates
+        job['progress_fraction'] = f"{evaluated_count}/{total_candidates}"
+        
+        # 進捗率も計算
+        if total_candidates > 0:
+            job['progress_percentage'] = round((evaluated_count / total_candidates) * 100, 1)
         else:
-            job['evaluated_count'] = 0
+            job['progress_percentage'] = 0
         
         return job
         
@@ -89,12 +101,53 @@ async def get_job_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ステータスの取得に失敗しました: {str(e)}")
 
+@router.post("/{job_id}/stop")
+async def stop_job(
+    job_id: str,
+    current_user: dict = Depends(authenticated_user)
+):
+    """ジョブを停止（再開可能）"""
+    try:
+        supabase = get_supabase_client()
+        
+        # ジョブの存在と権限確認
+        job_response = supabase.table('jobs').select('*').eq('id', job_id).single().execute()
+        
+        if not job_response.data:
+            raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+        
+        job = job_response.data
+        
+        # 権限チェック
+        if current_user['role'] != 'admin' and job.get('created_by') != current_user['id']:
+            raise HTTPException(status_code=403, detail="このジョブを停止する権限がありません")
+        
+        # ステータスの確認
+        if job.get('status') not in ['running']:
+            raise HTTPException(status_code=400, detail="実行中のジョブのみ停止できます")
+        
+        # ジョブを停止（pending状態に変更して再開可能にする）
+        update_response = supabase.table('jobs').update({
+            'status': 'pending',  # 再開可能にするためpendingに変更
+            'progress': job.get('progress', 0)  # 現在の進捗を保持
+        }).eq('id', job_id).execute()
+        
+        return {
+            "success": True,
+            "message": "ジョブを停止しました。再開ボタンで処理を再開できます。"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"停止に失敗しました: {str(e)}")
+
 @router.post("/{job_id}/cancel")
 async def cancel_job(
     job_id: str,
     current_user: dict = Depends(authenticated_user)
 ):
-    """ジョブをキャンセル"""
+    """ジョブを完全キャンセル（再開不可）"""
     try:
         supabase = get_supabase_client()
         
@@ -114,7 +167,7 @@ async def cancel_job(
         if job.get('status') not in ['pending', 'running']:
             raise HTTPException(status_code=400, detail="このジョブはキャンセルできません")
         
-        # ジョブをキャンセル
+        # ジョブを完全キャンセル
         update_response = supabase.table('jobs').update({
             'status': 'cancelled',
             'completed_at': 'now()'

@@ -4,8 +4,14 @@
 from fastapi import HTTPException, Request, Depends
 from typing import Optional
 from functools import wraps
+import jwt
+import os
 
 from core.utils.supabase_client import get_supabase_client
+
+# JWT設定
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
 
 async def get_current_user(request: Request) -> Optional[dict]:
     """現在のユーザーを取得"""
@@ -14,34 +20,37 @@ async def get_current_user(request: Request) -> Optional[dict]:
         return request.state.user
     
     # Cookieからアクセストークンを取得
-    access_token = request.cookies.get("access_token")
-    if not access_token:
+    token = request.cookies.get("access_token")
+    if not token:
+        print(f"[Auth Debug] No access_token cookie found. Available cookies: {list(request.cookies.keys())}")
         return None
     
     try:
-        supabase = get_supabase_client()
-        user_response = supabase.auth.get_user(access_token)
+        print(f"[Auth Debug] Found access_token cookie, attempting to decode JWT...")
+        # JWTトークンをデコード
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            print(f"[Auth Debug] No user ID in JWT payload")
+            return None
         
-        if user_response.user:
-            # ユーザーの役職を取得
-            profile_result = supabase.table('profiles').select('*').eq('id', user_response.user.id).execute()
-            
-            if profile_result.data and len(profile_result.data) > 0:
-                profile = profile_result.data[0]
-                return {
-                    "id": user_response.user.id,
-                    "email": user_response.user.email,
-                    "full_name": profile.get('full_name'),
-                    "role": profile.get('role', 'user'),
-                    "department": profile.get('department')
-                }
-            else:
-                return {
-                    "id": user_response.user.id,
-                    "email": user_response.user.email,
-                    "role": "user"
-                }
+        print(f"[Auth Debug] JWT decoded successfully. User: {payload.get('email')}")
+        
+        # ユーザー情報を返す
+        return {
+            "id": user_id,
+            "email": payload.get("email"),
+            "role": payload.get("role", "user"),
+            "full_name": payload.get("full_name", "")
+        }
+    except jwt.ExpiredSignatureError:
+        print(f"[Auth Debug] JWT token expired")
+        return None
+    except jwt.JWTError as e:
+        print(f"[Auth Debug] JWT decode error: {type(e).__name__}: {str(e)}")
+        return None
     except Exception as e:
+        print(f"[Auth Debug] Unexpected error: {type(e).__name__}: {str(e)}")
         return None
 
 async def admin_only(request: Request):
@@ -79,7 +88,7 @@ async def authenticated_user(request: Request):
     user = await get_current_user(request)
     
     if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Unauthorized - Please login")
     
     # リクエストのstateにユーザー情報を保存
     request.state.user = user

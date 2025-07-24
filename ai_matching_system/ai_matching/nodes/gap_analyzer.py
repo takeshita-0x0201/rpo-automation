@@ -2,11 +2,15 @@
 情報ギャップ分析ノード
 """
 
-from typing import List
+from typing import List, Dict
 import google.generativeai as genai
+import re
+from datetime import datetime
 
 from .base import BaseNode, ResearchState, InformationGap
 from .score_based_strategy import ScoreBasedSearchStrategy
+from ..utils.query_templates import QueryTemplates
+from ..utils.contradiction_resolver import ContradictionResolver
 
 
 class GapAnalyzerNode(BaseNode):
@@ -17,6 +21,7 @@ class GapAnalyzerNode(BaseNode):
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash')
         self.search_strategy = ScoreBasedSearchStrategy()
+        self.contradiction_resolver = ContradictionResolver()
     
     async def process(self, state: ResearchState) -> ResearchState:
         """情報ギャップを分析"""
@@ -99,6 +104,7 @@ class GapAnalyzerNode(BaseNode):
 市場競争力: "[職種] [経験年数] 市場価値 年収相場 [地域] 2024"
 
 # 重要な注意点
+- 懸念点で不明と判断された点に関しては調査対象とする
 - レジュメに明記されていない「実態」を探る
 - 求人の必須要件に関連するギャップを優先
 - 具体的で検索可能なクエリを生成
@@ -113,6 +119,26 @@ class GapAnalyzerNode(BaseNode):
         
         gaps = self._parse_gaps(response.text)
         print(f"  情報ギャップ分析完了: {len(gaps)}件の不足情報を特定")
+        
+        # 既存の検索結果に矛盾がある場合は検出
+        if state.search_results:
+            print(f"  矛盾検出を開始...")
+            contradictions = self.contradiction_resolver.detect_contradictions(
+                resume_data={'text': state.resume},
+                search_results=state.search_results,
+                evaluation_text=eval_result.raw_response if eval_result.raw_response else ""
+            )
+            if contradictions:
+                print(f"  {len(contradictions)}件の矛盾を検出")
+                # 矛盾解決を優先的な情報ギャップとして追加
+                for contradiction in contradictions[:1]:  # 最も重要な矛盾1つを追加
+                    gaps.insert(0, InformationGap(
+                        info_type="矛盾解決ギャップ",
+                        description=f"{contradiction.topic}に関する矛盾情報の確認",
+                        search_query=f"{contradiction.topic} 正確な情報 最新 確認",
+                        importance="高",
+                        rationale=f"{contradiction.source1['name']}と{contradiction.source2['name']}で情報が矛盾しているため確認が必要"
+                    ))
         
         # 状態を更新
         state.information_gaps = gaps
@@ -191,7 +217,9 @@ class GapAnalyzerNode(BaseNode):
             elif line.startswith("説明:"):
                 current_gap['description'] = line.split(':', 1)[1].strip()
             elif line.startswith("検索クエリ:"):
-                current_gap['query'] = line.split(':', 1)[1].strip()
+                raw_query = line.split(':', 1)[1].strip()
+                # テンプレートを使用してクエリを改善
+                current_gap['query'] = self._enhance_query(raw_query, current_gap)
             elif line.startswith("重要度:"):
                 imp = line.split(':', 1)[1].strip()
                 if imp in ["高", "中", "低"]:
@@ -214,20 +242,71 @@ class GapAnalyzerNode(BaseNode):
     
     def _generate_default_gaps(self) -> List[InformationGap]:
         """中間スコアの場合のデフォルトギャップを生成"""
-        default_gaps = [
-            InformationGap(
-                info_type="環境適応性ギャップ",
-                description="候補者の現在の企業と求人企業の規模・文化の違いによる適応リスク",
-                search_query="企業規模 従業員数 組織文化 働き方 比較",
-                importance="高",
-                rationale="組織規模や文化の違いは採用後の定着率に大きく影響するため"
-            ),
-            InformationGap(
-                info_type="実務遂行能力ギャップ",
-                description="必須スキルの実践的な深さと実際のプロジェクト規模での適用経験",
-                search_query="実務経験 プロジェクト規模 技術スタック 活用事例",
-                importance="高",
-                rationale="レジュメに記載されたスキルの実践的な深さを確認するため"
+        # コンテキストから企業名やスキルを抽出
+        context = self._extract_context_from_state()
+        
+        default_gaps = []
+        
+        # 環境適応性ギャップ
+        if context.get("company_name"):
+            query = QueryTemplates.generate_company_query(
+                context["company_name"], "企業文化", datetime.now().year
             )
-        ]
+        else:
+            query = "企業規模 従業員数 組織文化 働き方 比較"
+            
+        default_gaps.append(InformationGap(
+            info_type="環境適応性ギャップ",
+            description="候補者の現在の企業と求人企業の規模・文化の違いによる適応リスク",
+            search_query=query,
+            importance="高",
+            rationale="組織規模や文化の違いは採用後の定着率に大きく影響するため"
+        ))
+        
+        # 実務遂行能力ギャップ
+        if context.get("key_skill"):
+            query = QueryTemplates.generate_skill_query(
+                context["key_skill"], context.get("industry", "")
+            )
+        else:
+            query = "実務経験 プロジェクト規模 技術スタック 活用事例"
+            
+        default_gaps.append(InformationGap(
+            info_type="実務遂行能力ギャップ",
+            description="必須スキルの実践的な深さと実際のプロジェクト規模での適用経験",
+            search_query=query,
+            importance="高",
+            rationale="レジュメに記載されたスキルの実践的な深さを確認するため"
+        ))
+        
         return default_gaps[:2]  # 最大2つのデフォルトギャップ
+    
+    def _enhance_query(self, raw_query: str, gap_context: Dict) -> str:
+        """生のクエリをテンプレートを使用して改善"""
+        # 企業名を抽出
+        company_match = re.search(r'(株式会社[\w]+|[\w]+株式会社)', raw_query)
+        if company_match and gap_context.get('type') == '環境適応性ギャップ':
+            return QueryTemplates.generate_company_query(
+                company_match.group(1), "企業文化"
+            )
+        
+        # スキル名を抽出
+        skill_keywords = ["Python", "Java", "JavaScript", "営業", "マネジメント", "マーケティング"]
+        for skill in skill_keywords:
+            if skill in raw_query and gap_context.get('type') == '実務遂行能力ギャップ':
+                return QueryTemplates.generate_skill_query(skill)
+        
+        # デフォルトは元のクエリに年号を追加
+        if str(datetime.now().year) not in raw_query:
+            raw_query += f" {datetime.now().year}"
+            
+        return raw_query
+    
+    def _extract_context_from_state(self) -> Dict:
+        """現在の状態からコンテキスト情報を抽出"""
+        context = {}
+        
+        # stateから企業名、スキル、業界などを抽出するロジック
+        # これは実際のstateの内容に基づいて実装する必要がある
+        
+        return context

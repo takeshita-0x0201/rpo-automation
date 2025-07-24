@@ -29,6 +29,15 @@ class ReportGeneratorNode(BaseNode):
         # 収集した追加情報をフォーマット
         additional_info = self._format_collected_info(state.search_results)
         
+        # スコア内訳のフォーマット
+        score_breakdown_text = ""
+        if state.current_evaluation and hasattr(state.current_evaluation, 'score_breakdown') and state.current_evaluation.score_breakdown:
+            score_breakdown_text = "\n### スコア内訳"
+            for category_key, detail in state.current_evaluation.score_breakdown.items():
+                score_breakdown_text += f"\n- {detail.category}: {detail.actual_score:.1f}/{detail.max_score}点"
+                if detail.reasoning:
+                    score_breakdown_text += f" ({detail.reasoning})"
+        
         # 最適化されたプロンプト
         prompt = f"""採用委員会の最終意思決定者として、最終判定を行います。
 
@@ -44,6 +53,7 @@ class ReportGeneratorNode(BaseNode):
 - 確信度: {state.current_evaluation.confidence if state.current_evaluation else 'N/A'}
 - 強み: {', '.join(state.current_evaluation.strengths[:2]) if state.current_evaluation else 'N/A'}
 - 懸念: {', '.join(state.current_evaluation.concerns[:2]) if state.current_evaluation else 'N/A'}
+{score_breakdown_text}
 
 # 推奨度基準（厳格化）
 - A (強く推奨): スコア85以上 + 必須要件を100%明確に満たす + 直近3年以内の実績

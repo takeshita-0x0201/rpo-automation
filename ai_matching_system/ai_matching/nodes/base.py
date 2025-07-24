@@ -23,6 +23,16 @@ class ResearchState:
     resume: str
     job_memo: str
     job_description: Optional[str] = None  # オプショナル（使用しない場合はNone）
+    candidate_id: Optional[str] = None  # 候補者ID（Supabase連携用）
+    
+    # 候補者基本情報（最初から渡す）
+    candidate_age: Optional[int] = None
+    candidate_gender: Optional[str] = None
+    candidate_company: Optional[str] = None
+    enrolled_company_count: Optional[int] = None
+    
+    # 求人の構造化データ
+    structured_job_data: Optional[Dict] = None
     
     # 処理中のデータ
     current_evaluation: Optional['EvaluationResult'] = None
@@ -55,6 +65,15 @@ class ResearchState:
 
 
 @dataclass
+class ScoreDetail:
+    """スコアの詳細情報"""
+    category: str  # 評価カテゴリ（必須要件、実務遂行能力等）
+    max_score: float  # 最大スコア
+    actual_score: float  # 実際のスコア
+    items: List[Dict[str, any]]  # 個別項目の評価
+    reasoning: str  # スコアリングの理由
+
+@dataclass
 class EvaluationResult:
     """評価結果"""
     score: int  # 0-100
@@ -64,6 +83,12 @@ class EvaluationResult:
     summary: str
     interview_points: Optional[List[str]] = None  # 面接確認事項
     raw_response: Optional[str] = None
+    score_breakdown: Optional[Dict[str, ScoreDetail]] = None  # スコアの詳細内訳
+    evidence_map: Optional[Dict[str, List[str]]] = None  # 根拠となる情報のマッピング
+    uncertainty_report: Optional[Any] = None  # 不確実性レポート
+    contradiction_report: Optional[Any] = None  # 矛盾解決レポート
+    career_assessment: Optional[Any] = None  # キャリア継続性評価
+    age_experience_assessment: Optional[Any] = None  # 年齢・経験社数評価
 
 
 @dataclass
