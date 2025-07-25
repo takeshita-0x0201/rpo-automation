@@ -191,6 +191,14 @@ async def view_requirement(
             raise HTTPException(status_code=404, detail="Requirement not found")
         requirement = req_response.data
         requirement['client_name'] = requirement['clients']['name'] if requirement.get('clients') else 'N/A'
+
+        # structured_dataを日本語で表示できるように整形
+        if isinstance(requirement.get('structured_data'), dict):
+            requirement['structured_data_formatted'] = json.dumps(
+                requirement['structured_data'], indent=2, ensure_ascii=False
+            )
+        else:
+            requirement['structured_data_formatted'] = '{}'
     except Exception as e:
         raise HTTPException(status_code=404, detail="Requirement not found")
 
@@ -218,6 +226,14 @@ async def edit_requirement(
         if not req_response.data or len(req_response.data) == 0:
             raise HTTPException(status_code=404, detail="Requirement not found")
         requirement = req_response.data[0]
+
+        # descriptionを求人票とメモに分割
+        description_text = requirement.get('description', '')
+        parts = description_text.split('【求人メモ】')
+        job_description = parts[0].replace('【求人票】\n', '').strip()
+        requirement_memo = parts[1].strip() if len(parts) > 1 else ''
+        requirement['job_description_parsed'] = job_description
+        requirement['requirement_memo_parsed'] = requirement_memo
 
         # 常に日本語で表示するために、ここでJSON文字列に変換しておく
         if isinstance(requirement.get('structured_data'), dict):
@@ -251,7 +267,8 @@ async def update_requirement(
     requirement_id: str,
     client_id: str = Form(...),
     title: str = Form(...),
-    requirement_text: str = Form(...),
+    job_description: str = Form(...),
+    requirement_memo: str = Form(...),
     structured_data: str = Form(...),
     is_active: Optional[bool] = Form(False),
     user=Depends(get_current_admin_user),
@@ -274,10 +291,12 @@ async def update_requirement(
         update_data = {
             "client_id": client_id,
             "title": title,
-            "description": requirement_text,
+            "description": f"【求人票】\n{job_description}\n\n【求人メモ】\n{requirement_memo}",
             "structured_data": parsed_structured_data,
             "is_active": is_active,
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().isoformat(),
+            "job_description": job_description.strip(),
+            "memo": requirement_memo.strip()
         }
         
         response = db.table('job_requirements').update(update_data).eq('id', requirement_id).execute()
@@ -325,21 +344,29 @@ async def delete_requirement(
         status_code=303
     )
 
-@router.post("/api/requirements/restructure")
-async def restructure_requirement_api(request: Request, user=Depends(get_current_admin_user)):
-    """AIを用いて採用要件を再構造化する"""
+@router.post("/api/requirements/structure")
+async def structure_requirement(request: Request, user=Depends(get_current_admin_user)):
+    """AIを用いて採用要件を構造化する"""
     try:
+        from core.services.requirement_structuring_service import RequirementStructuringService
+
         body = await request.json()
-        original_text = body.get('text', '')
+        job_description = body.get('job_description', '')
+        job_memo = body.get('job_memo', '')
 
-        if not original_text:
-            raise HTTPException(status_code=400, detail="テキストが空です")
+        if not job_description or not job_memo:
+            raise HTTPException(status_code=400, detail="求人票と求人メモの両方が必要です")
 
-        # ダミーの応答
-        restructured_text = "【再構造化されたテキスト】\n" + original_text
+        service = RequirementStructuringService()
+        structured_data = await service.structure_requirement(job_description, job_memo)
 
-        return JSONResponse(content={"restructured_text": restructured_text})
+        return JSONResponse(content={
+            "success": True,
+            "structured_data": structured_data
+        })
 
+    except HTTPException as e:
+        return JSONResponse(status_code=e.status_code, content={"success": False, "error": e.detail})
     except Exception as e:
-        print(f"Error in restructure_requirement_api: {e}")
-        return JSONResponse(status_code=500, content={"error": "再構造化中にエラーが発生しました"})
+        print(f"Error in structure_requirement: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": "構造化中にサーバーエラーが発生しました"})

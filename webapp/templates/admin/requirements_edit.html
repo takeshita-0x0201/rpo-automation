@@ -48,36 +48,30 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="requirement_text" class="form-label">採用要件詳細</label>
-                    <div class="input-group">
-                        <textarea class="form-control" id="requirement_text" name="requirement_text" rows="15" required>{{ requirement.description }}</textarea>
-                        <button class="btn btn-outline-primary" type="button" id="restructure-btn">
-                            <i class="bi bi-magic"></i> 再構造化
+                    <label for="job_description" class="form-label">求人票</label>
+                    <textarea class="form-control" id="job_description" name="job_description" rows="10">{{ requirement.job_description_parsed }}</textarea>
+                    <div class="form-text">求人票の内容をテキストで入力してください</div>
+                </div>
+                <div class="mb-3">
+                    <label for="requirement_memo" class="form-label">求人メモ</label>
+                    <textarea class="form-control" id="requirement_memo" name="requirement_memo" rows="10">{{ requirement.requirement_memo_parsed }}</textarea>
+                </div>
+                <!-- 構造化部分 -->
+                <div class="mb-3">
+                    <button type="button" id="structure-btn" class="btn btn-secondary">AIで構造化</button>
+                    <small class="text-muted ms-2">求人票と求人メモから構造化データを生成します</small>
+                </div>
+                <div class="mb-3" id="structured-data-container" style="display: none;">
+                    <label for="structured_data" class="form-label">構造化データ (JSON)</label>
+                    <textarea class="form-control" id="structured_data" name="structured_data" rows="15">{{ requirement.structured_data_formatted }}</textarea>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleStructuredDataView()">
+                            <span id="view-toggle-text">読みやすい形式で表示</span>
                         </button>
                     </div>
-                    <div class="form-text">求人票と求人メモを含む全ての情報</div>
-                </div>
-
-                {% if requirement.job_description %}
-                <div class="mb-3">
-                    <label for="job_description" class="form-label">求人票（参考）</label>
-                    <textarea class="form-control" id="job_description" rows="10" readonly>{{ requirement.job_description }}</textarea>
-                    <div class="form-text">このフィールドは参照用です。編集する場合は「採用要件詳細」を編集してください。</div>
-                </div>
-                {% endif %}
-
-                {% if requirement.memo %}
-                <div class="mb-3">
-                    <label for="memo" class="form-label">求人メモ（参考）</label>
-                    <textarea class="form-control" id="memo" rows="5" readonly>{{ requirement.memo }}</textarea>
-                    <div class="form-text">このフィールドは参照用です。編集する場合は「採用要件詳細」を編集してください。</div>
-                </div>
-                {% endif %}
-
-                <div class="mb-3">
-                    <label for="structured_data" class="form-label">構造化データ (JSON)</label>
-                    <textarea class="form-control" id="structured_data" name="structured_data" rows="10">{{ requirement.structured_data_formatted }}</textarea>
-                    <div class="form-text">JSON形式で入力してください。空の場合は {} としてください。</div>
+                    <div id="structured-data-view" class="mt-3" style="display: none;">
+                        <!-- 構造化データの読みやすい表示 -->
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -184,46 +178,120 @@ document.getElementById('structured_data').addEventListener('blur', function() {
 });
 
 // 再構造化ボタンの処理
-document.getElementById('restructure-btn').addEventListener('click', async function() {
-    const button = this;
-    const originalHtml = button.innerHTML;
-    const textarea = document.getElementById('requirement_text');
-    const originalText = textarea.value;
-
-    if (!originalText.trim()) {
-        alert('再構造化するテキストを入力してください。');
+document.getElementById('structure-btn').addEventListener('click', async () => {
+    const jobDescription = document.getElementById('job_description').value;
+    const jobMemo = document.getElementById('requirement_memo').value;
+    
+    if (!jobDescription || !jobMemo) {
+        alert('求人票と求人メモの両方を入力してください。');
         return;
     }
 
-    // ボタンをローディング状態に変更
-    button.disabled = true;
-    button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 処理中...`;
+    const structureBtn = document.getElementById('structure-btn');
+    const structuredDataField = document.getElementById('structured_data');
+    const structuredDataContainer = document.getElementById('structured-data-container');
+
+    // ローディング表示開始
+    structureBtn.disabled = true;
+    structureBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 構造化中...';
+    structuredDataField.value = '構造化中です。しばらくお待ちください...';
+    structuredDataContainer.style.display = 'block';
 
     try {
-        const response = await fetch('/api/requirements/restructure', {
+        const response = await fetch('/api/requirements/structure', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                // CSRFトークンが必要な場合はヘッダーに追加
             },
-            body: JSON.stringify({ text: originalText })
+            body: JSON.stringify({ 
+                job_description: jobDescription,
+                job_memo: jobMemo
+            })
         });
+        
+        const result = await response.json();
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        if (result && result.success) {
+            const formattedJson = JSON.stringify(result.structured_data, null, 2);
+            structuredDataField.value = formattedJson;
+            displayStructuredData(result.structured_data);
+            // フォーマット支援のためにblurイベントを発火させる
+            structuredDataField.dispatchEvent(new Event('blur'));
+        } else {
+            const errorMessage = result && result.error ? result.error : 'Unknown error occurred';
+            alert('構造化に失敗しました: ' + errorMessage);
+            structuredDataField.value = '構造化に失敗しました。エラー: ' + errorMessage;
         }
-
-        const data = await response.json();
-        textarea.value = data.restructured_text;
-
     } catch (error) {
-        console.error('Restructuring failed:', error);
-        alert(`再構造化に失敗しました。\nエラー: ${error.message}`);
+        alert('通信エラーが発生しました: ' + error.message);
+        structuredDataField.value = '通信エラーが発生しました。エラー: ' + error.message;
     } finally {
-        // ボタンの状態を元に戻す
-        button.disabled = false;
-        button.innerHTML = originalHtml;
+        // ローディング表示終了
+        structureBtn.disabled = false;
+        structureBtn.innerHTML = 'AIで構造化';
+    }
+});
+
+// 構造化データを読みやすい形式で表示
+function displayStructuredData(data) {
+    const viewDiv = document.getElementById('structured-data-view');
+    if (!viewDiv) return;
+
+    let html = '<div class="card"><div class="card-body">';
+    
+    if (data.basic_info) {
+        html += '<h5 class="card-title">基本情報</h5><dl class="row">';
+        for (const [key, value] of Object.entries(data.basic_info)) {
+            html += `<dt class="col-sm-3">${key}</dt><dd class="col-sm-9">${value || '-'}</dd>`;
+        }
+        html += '</dl>';
+    }
+    
+    if (data.requirements && data.requirements.must_have) {
+        html += '<h5 class="card-title mt-4">必須要件</h5><ul class="list-group list-group-flush">';
+        for (const req of data.requirements.must_have) {
+            html += `<li class="list-group-item"><strong>[${req.category}]</strong> ${req.item}<span class="badge bg-primary float-end">重要度: ${req.importance}</span></li>`;
+        }
+        html += '</ul>';
+    }
+    
+    if (data.requirements && data.requirements.nice_to_have) {
+        html += '<h5 class="card-title mt-4">歓迎要件</h5><ul class="list-group list-group-flush">';
+        for (const req of data.requirements.nice_to_have) {
+            html += `<li class="list-group-item"><strong>[${req.category}]</strong> ${req.item}<span class="badge bg-secondary float-end">重要度: ${req.importance}</span></li>`;
+        }
+        html += '</ul>';
+    }
+    
+    html += '</div></div>';
+    viewDiv.innerHTML = html;
+}
+
+// 表示切り替え
+function toggleStructuredDataView() {
+    const viewDiv = document.getElementById('structured-data-view');
+    const toggleText = document.getElementById('view-toggle-text');
+    if (!viewDiv) return;
+
+    if (viewDiv.style.display === 'none') {
+        viewDiv.style.display = 'block';
+        toggleText.textContent = 'JSON形式で表示';
+    } else {
+        viewDiv.style.display = 'none';
+        toggleText.textContent = '読みやすい形式で表示';
+    }
+}
+
+// ページ読み込み時に、既存の構造化データを読みやすい形式で表示
+document.addEventListener('DOMContentLoaded', function() {
+    const structuredDataField = document.getElementById('structured_data');
+    try {
+        const data = JSON.parse(structuredDataField.value);
+        displayStructuredData(data);
+        // 編集画面では、最初から構造化データエリアを表示しておく
+        document.getElementById('structured-data-container').style.display = 'block';
+    } catch (e) {
+        // パースエラー時は何もしない
     }
 });
 </script>
