@@ -6,7 +6,7 @@ import os
 import sys
 import json
 import asyncio
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import uuid
 from dotenv import load_dotenv
@@ -115,18 +115,32 @@ class AIMatchingService:
                 raise Exception(f"Requirement {job['requirement_id']} not found")
             
             # 候補者を取得（スクレイピング結果から）
-            candidates = await self._get_candidates_for_job(job)
+            candidates, all_candidates, evaluated_candidate_ids = await self._get_candidates_for_job(job)
             
-            print(f"Job {job_id}: Found {len(candidates)} candidates")
+            print(f"Job {job_id}: Found {len(candidates)} candidates to process")
             print(f"Job details: client_id={job.get('client_id')}, requirement_id={job.get('requirement_id')}")
             
-            if not candidates:
-                print(f"No candidates found for job {job_id}, completing job")
+            # 進捗計算用の変数
+            total_candidates_count = len(all_candidates)  # 要件に合致する全候補者数
+            already_evaluated_count = len(evaluated_candidate_ids)  # 既に評価済みの数
+            processed = 0  # 今回処理した数
+            
+            # 既に全て評価済みの場合
+            if not candidates and total_candidates_count > 0:
+                print(f"All {total_candidates_count} candidates already evaluated for job {job_id}")
+                await self._update_job_status(job_id, 'completed', 100)
+                return
+            elif not candidates:
+                print(f"No candidates found for job {job_id}")
                 await self._update_job_status(job_id, 'completed', 100)
                 return
             
-            total_candidates = len(candidates)
-            processed = 0
+            print(f"Progress calculation - Total: {total_candidates_count}, Already evaluated: {already_evaluated_count}, To process: {len(candidates)}")
+            
+            # 開始時の進捗率を計算して更新
+            initial_progress = int((already_evaluated_count / total_candidates_count) * 100) if total_candidates_count > 0 else 0
+            await self._update_job_status(job_id, 'running', initial_progress)
+            print(f"Initial progress: {already_evaluated_count}/{total_candidates_count} = {initial_progress}%")
             
             # 各候補者を評価
             for candidate in candidates:
@@ -139,10 +153,6 @@ class AIMatchingService:
                             # 停止要求された場合
                             return
                         break
-                    
-                    # 進捗更新
-                    progress = int((processed / total_candidates) * 100)
-                    await self._update_job_status(job_id, 'running', progress)
                     
                     # Supabaseから取得したデータを直接使用
                     resume_text = candidate.get('candidate_resume', '')
@@ -240,10 +250,15 @@ class AIMatchingService:
                     
                     processed += 1
                     
+                    # 進捗更新（処理後に更新）
+                    current_evaluated_count = already_evaluated_count + processed
+                    progress = int((current_evaluated_count / total_candidates_count) * 100) if total_candidates_count > 0 else 100
+                    await self._update_job_status(job_id, 'running', progress)
+                    print(f"Progress updated: {current_evaluated_count}/{total_candidates_count} = {progress}%")
+                    
                 except Exception as e:
                     print(f"Error processing candidate {candidate.get('id')}: {e}")
-                    # エラーでも続行
-                    processed += 1
+                    # エラーでも続行（進捗はカウントしない）
             
             # ジョブ完了
             await self._update_job_status(job_id, 'completed', 100)
@@ -272,8 +287,12 @@ class AIMatchingService:
         
         return requirement
     
-    async def _get_candidates_for_job(self, job: Dict) -> List[Dict]:
-        """ジョブに関連する候補者を取得（未評価の候補者のみ）"""
+    async def _get_candidates_for_job(self, job: Dict) -> Tuple[List[Dict], List[Dict], List[str]]:
+        """ジョブに関連する候補者を取得
+        
+        Returns:
+            Tuple[candidates(未評価), all_candidates(全候補者), evaluated_candidate_ids(評価済みID)]
+        """
         # job_parameters から検索条件を取得
         params = job.get('parameters', {})
         job_id = job.get('id')
@@ -301,8 +320,8 @@ class AIMatchingService:
             query = query.eq('client_id', job['client_id'])
             print(f"  Filtering by client_id: {job['client_id']}")
         
-        # 最新の100件まで
-        query = query.order('scraped_at', desc=True).limit(100)
+        # 全件取得（limit削除）
+        query = query.order('scraped_at', desc=True)
         
         response = query.execute()
         all_candidates = response.data or []
@@ -318,7 +337,7 @@ class AIMatchingService:
         if candidates:
             print(f"  First unevaluated candidate: {candidates[0].get('candidate_id')} - {candidates[0].get('candidate_company')}")
         
-        return candidates
+        return candidates, all_candidates, evaluated_candidate_ids
     
     
     def _format_job_description(self, requirement: Dict) -> str:
