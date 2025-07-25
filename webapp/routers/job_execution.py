@@ -41,6 +41,15 @@ async def execute_job(
         if job.get('status') not in ['pending', 'failed']:
             raise HTTPException(status_code=400, detail="このジョブは既に実行中または完了しています")
         
+        # 即座にステータスを更新（ラグを防ぐ）
+        from datetime import datetime
+        supabase.table('jobs').update({
+            'status': 'running',
+            'started_at': datetime.utcnow().isoformat(),
+            'progress': 0,
+            'updated_at': datetime.utcnow().isoformat()
+        }).eq('id', job_id).execute()
+        
         # バックグラウンドでジョブを実行
         background_tasks.add_task(
             ai_matching_service.process_job,
@@ -75,17 +84,32 @@ async def get_job_status(
         
         job = job_response.data
         
-        # 総候補者数を取得（candidatesテーブルから）
-        total_candidates_response = supabase.table('candidates').select('id', count='exact').execute()
-        total_candidates = total_candidates_response.count or 0
+        # ジョブのrequirement_idを取得
+        requirement_id = job.get('requirement_id')
         
-        # 評価済み候補者数を取得（ai_evaluationsテーブルから）
-        evaluated_response = supabase.table('ai_evaluations').select('id', count='exact').eq('search_id', job_id).execute()
-        evaluated_count = evaluated_response.count or 0
+        if requirement_id:
+            # 総候補者数を取得（candidatesテーブルから、requirement_idでフィルタ）
+            total_candidates_response = supabase.table('candidates').select('id', count='exact').eq('requirement_id', requirement_id).execute()
+            total_candidates = total_candidates_response.count or 0
+            
+            # 評価済み候補者数を取得（ai_evaluationsテーブルから）
+            evaluated_response = supabase.table('ai_evaluations').select('id', count='exact').eq('job_id', job_id).execute()
+            evaluated_count = evaluated_response.count or 0
+            
+            # 未評価候補者数を計算
+            unevaluated_count = total_candidates - evaluated_count
+        else:
+            # requirement_idがない場合は旧方式で互換性維持
+            total_candidates_response = supabase.table('candidates').select('id', count='exact').execute()
+            total_candidates = total_candidates_response.count or 0
+            evaluated_response = supabase.table('ai_evaluations').select('id', count='exact').eq('job_id', job_id).execute()
+            evaluated_count = evaluated_response.count or 0
+            unevaluated_count = total_candidates - evaluated_count
         
         # 分数表記の対象数を追加
         job['evaluated_count'] = evaluated_count
         job['total_candidates'] = total_candidates
+        job['unevaluated_count'] = unevaluated_count
         job['progress_fraction'] = f"{evaluated_count}/{total_candidates}"
         
         # 進捗率も計算
@@ -123,8 +147,15 @@ async def stop_job(
             raise HTTPException(status_code=403, detail="このジョブを停止する権限がありません")
         
         # ステータスの確認
-        if job.get('status') not in ['running']:
-            raise HTTPException(status_code=400, detail="実行中のジョブのみ停止できます")
+        current_status = job.get('status')
+        if current_status not in ['running']:
+            # 既に停止している可能性があるので、詳細なメッセージを返す
+            if current_status == 'pending':
+                raise HTTPException(status_code=400, detail="このジョブは既に停止しています")
+            elif current_status == 'completed':
+                raise HTTPException(status_code=400, detail="このジョブは既に完了しています")
+            else:
+                raise HTTPException(status_code=400, detail=f"実行中のジョブのみ停止できます（現在: {current_status}）")
         
         # ジョブを停止（pending状態に変更して再開可能にする）
         update_response = supabase.table('jobs').update({

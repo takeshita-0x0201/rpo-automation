@@ -26,10 +26,15 @@ router = APIRouter()
 class ExportCandidatesRequest(BaseModel):
     selected_candidate_ids: List[str]
 
+import math
+
 @router.get("/job/{job_id}/candidates", response_class=HTMLResponse)
 async def job_candidates_list(
     request: Request, 
     job_id: str,
+    page: int = 1,
+    per_page: int = 20,
+    filter_level: Optional[str] = None,
     user: Optional[dict] = Depends(get_current_user_from_cookie)
 ):
     """ジョブ完了後の候補者一覧表示"""
@@ -94,6 +99,44 @@ async def job_candidates_list(
                 'C': 'warning',
                 'D': 'danger'
             }.get(eval['recommendation'], 'secondary')
+
+        # サーバーサイドでのフィルタリングとページネーション
+        if filter_level:
+            if filter_level == 'high':
+                filtered_evaluations = [e for e in evaluations if e['recommendation'] == 'A']
+            elif filter_level == 'medium':
+                filtered_evaluations = [e for e in evaluations if e['recommendation'] in ['A', 'B']]
+            elif filter_level == 'c_only':
+                filtered_evaluations = [e for e in evaluations if e['recommendation'] == 'C']
+            elif filter_level == 'd_only':
+                filtered_evaluations = [e for e in evaluations if e['recommendation'] == 'D']
+            else: # 'all' or any other value
+                filtered_evaluations = evaluations
+            
+            # フィルタ適用時は全件表示
+            paginated_evaluations = filtered_evaluations
+            total_pages = 1
+            page = 1
+        else:
+            # フィルタなし（全て表示）の場合のみページネーションを適用
+            filtered_evaluations = evaluations
+            total_items = len(filtered_evaluations)
+            total_pages = math.ceil(total_items / per_page)
+            start = (page - 1) * per_page
+            end = start + per_page
+            paginated_evaluations = filtered_evaluations[start:end]
+
+        # ページネーション情報を構成
+        pagination = {
+            "page": page,
+            "per_page": per_page,
+            "total_items": len(filtered_evaluations),
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_num": page - 1 if page > 1 else None,
+            "next_num": page + 1 if page < total_pages else None
+        }
         
         # 統計情報（送客済み候補者数を追加）
         stats = {
@@ -108,8 +151,10 @@ async def job_candidates_list(
             "request": request,
             "current_user": user,
             "job": job,
-            "evaluations": evaluations,
-            "stats": stats
+            "evaluations": paginated_evaluations,
+            "stats": stats,
+            "pagination": pagination,
+            "current_filter": filter_level
         })
         
     except Exception as e:

@@ -41,6 +41,15 @@
                         <th>採用要件:</th>
                         <td>{{ job.requirement.title if job.requirement else "-" }}</td>
                     </tr>
+                    <tr>
+                        <th>対象候補者数:</th>
+                        <td>
+                            <span class="text-primary">{{ job.unevaluated_count|default(0) }}名</span>
+                            <small class="text-muted">
+                                (全{{ job.total_candidates|default(0) }}名中 {{ job.evaluated_count|default(0) }}名評価済み)
+                            </small>
+                        </td>
+                    </tr>
                 </table>
             </div>
             <div class="col-md-6">
@@ -102,36 +111,6 @@
     </div>
 </div>
 
-<!-- ジョブパラメータ -->
-{% if job.parameters %}
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="mb-0">実行パラメータ</h5>
-    </div>
-    <div class="card-body">
-        <table class="table table-sm">
-            <tbody>
-                {% for key, value in job.parameters.items() %}
-                <tr>
-                    <th style="width: 200px;">{{ key }}:</th>
-                    <td>
-                        {% if value is boolean %}
-                            {% if value %}
-                                <i class="bi bi-check-circle text-success"></i> 有効
-                            {% else %}
-                                <i class="bi bi-x-circle text-danger"></i> 無効
-                            {% endif %}
-                        {% else %}
-                            {{ value }}
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
 
 <!-- 処理結果（完了したジョブの場合） -->
 {% if job.status == "completed" and processed_candidates %}
@@ -294,24 +273,25 @@ function executeJob(jobId) {
 
 function cancelJob(jobId) {
     if (confirm('このジョブを停止してもよろしいですか？')) {
-        fetch(`{{ base_path }}/jobs/${jobId}/cancel`, { 
+        // 停止APIを呼び出し（/cancelではなく/stopを使用）
+        fetch(`/api/jobs/${jobId}/stop`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             }
         })
         .then(response => {
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                return response.json().then(data => {
-                    alert(`ジョブの停止に失敗しました: ${data.error || '不明なエラー'}`);
-                });
+            if (!response.ok) {
+                return response.json().then(err => Promise.reject(err));
             }
+            return response.json();
+        })
+        .then(data => {
+            alert(data.message || 'ジョブを停止しました');
+            location.reload();
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('ジョブの停止に失敗しました: ネットワークエラー');
+            alert('エラー: ' + (error.detail || 'ジョブの停止に失敗しました'));
         });
     }
 }

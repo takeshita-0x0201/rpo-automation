@@ -112,10 +112,15 @@
                 </td>
                 <td>{{ job.name or "-" }}</td>
                 <td>
-                    {% if job.progress_fraction is defined %}
-                        <span class="badge bg-info">{{ job.progress_fraction }}</span>
-                    {% elif job.candidate_count is defined %}
-                        <span class="badge bg-info">{{ job.candidate_count }}人</span>
+                    {% if job.status == "completed" %}
+                        <span class="badge bg-success">{{ job.evaluated_count|default(0) }}名完了</span>
+                    {% elif job.progress_fraction is defined and job.progress_fraction != "0/0" %}
+                        <span class="badge bg-info">
+                            {{ job.progress_fraction }}
+                            <small>(残{{ job.unevaluated_count|default(0) }}名)</small>
+                        </span>
+                    {% elif job.unevaluated_count is defined %}
+                        <span class="badge bg-primary">{{ job.unevaluated_count }}名</span>
                     {% else %}
                         <span class="text-muted">-</span>
                     {% endif %}
@@ -152,7 +157,7 @@
                         <a href="{{ base_path }}/jobs/{{ job.id }}/details" class="btn btn-sm btn-outline-info">
                             <i class="bi bi-info-circle"></i> 詳細
                         </a>
-                        {% if job.status == "completed" and job.job_type == "ai_matching" %}
+                        {% if job.job_type == "ai_matching" %}
                         <a href="{{ base_path }}/candidates/job/{{ job.id }}/candidates" class="btn btn-sm btn-outline-success">
                             <i class="bi bi-people"></i> 候補者選択
                         </a>

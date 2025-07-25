@@ -15,11 +15,32 @@ async def get_current_admin_user(user: dict = Depends(get_current_user_from_cook
 from core.utils.supabase_client import get_supabase_client
 from core.utils.supabase_service import get_supabase_service_client
 
-def get_db():
-    """データベースクライアントを取得（RLSバイパス）"""
-    return get_supabase_service_client()
+def get_db():    """データベースクライアントを取得（RLSバイパス）"""    return get_supabase_service_client()
 
 router = APIRouter()
+
+# AIによる再構造化APIエンドポイント
+@router.post("/api/requirements/restructure")
+async def restructure_requirement_api(request: Request, user=Depends(get_current_admin_user)):
+    """AIを用いて採用要件を再構造化する"""
+    try:
+        body = await request.json()
+        original_text = body.get('text', '')
+
+        if not original_text:
+            raise HTTPException(status_code=400, detail="テキストが空です")
+
+        # ここでAIによる再構造化処理を呼び出す（今回はダミーの応答）
+        # 例: from core.ai.restructure import restructure_text
+        # restructured_text = await restructure_text(original_text)
+        
+        restructured_text = "【再構造化されたテキスト】\n" + original_text
+
+        return JSONResponse(content={"restructured_text": restructured_text})
+
+    except Exception as e:
+        print(f"Error in restructure_requirement_api: {e}")
+        return JSONResponse(status_code=500, content={"error": "再構造化中にエラーが発生しました"})
 templates_path = pathlib.Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_path))
 
@@ -217,19 +238,7 @@ async def edit_requirement(
         req_response = db.table('job_requirements').select('*').eq('id', requirement_id).execute()
         if not req_response.data or len(req_response.data) == 0:
             raise HTTPException(status_code=404, detail="Requirement not found")
-        requirement = req_response.data[0]
-
-        # クライアント一覧を取得
-        clients_response = db.table('clients').select('id, name').eq('is_active', True).order('name').execute()
-        clients = clients_response.data if clients_response.data else []
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in edit_requirement: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-    return templates.TemplateResponse("admin/requirements_edit.html", {
+        return templates.TemplateResponse("admin/requirements_edit.html", {
         "request": request,
         "current_user": user,
         "requirement": requirement,

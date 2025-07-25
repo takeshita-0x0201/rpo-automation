@@ -31,23 +31,23 @@
     <div class="col-md-2">
         <div class="card text-white bg-success">
             <div class="card-body">
-                <h5 class="card-title">強く推奨</h5>
+                <h5 class="card-title">A - 強く推奨</h5>
                 <p class="card-text display-6">{{ stats.high }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">B - 推奨</h5>
+                <p class="card-text display-6">{{ stats.medium }}</p>
             </div>
         </div>
     </div>
     <div class="col-md-2">
         <div class="card text-white bg-warning">
             <div class="card-body">
-                <h5 class="card-title">推奨</h5>
-                <p class="card-text display-6">{{ stats.medium }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card text-white bg-secondary">
-            <div class="card-body">
-                <h5 class="card-title">要検討</h5>
+                <h5 class="card-title">C/D - 要検討/不適合</h5>
                 <p class="card-text display-6">{{ stats.low }}</p>
             </div>
         </div>
@@ -68,15 +68,21 @@
         <div class="row align-items-center">
             <div class="col-md-6">
                 <div class="btn-group" role="group">
-                    <button class="btn btn-outline-primary active" onclick="filterByScore('all')">
+                    <a href="?" class="btn btn-outline-primary {% if not current_filter %}active{% endif %}">
                         全て表示
-                    </button>
-                    <button class="btn btn-outline-success" onclick="filterByScore('high')">
-                        強く推奨のみ
-                    </button>
-                    <button class="btn btn-outline-warning" onclick="filterByScore('medium')">
-                        推奨以上
-                    </button>
+                    </a>
+                    <a href="?filter_level=high" class="btn btn-outline-success {% if current_filter == 'high' %}active{% endif %}">
+                        Aランク (強く推奨) のみ
+                    </a>
+                    <a href="?filter_level=medium" class="btn btn-outline-primary {% if current_filter == 'medium' %}active{% endif %}">
+                        Bランク (推奨) 以上
+                    </a>
+                    <a href="?filter_level=c_only" class="btn btn-outline-warning {% if current_filter == 'c_only' %}active{% endif %}">
+                        Cランク (要検討) のみ
+                    </a>
+                    <a href="?filter_level=d_only" class="btn btn-outline-danger {% if current_filter == 'd_only' %}active{% endif %}">
+                        Dランク (不適合) のみ
+                    </a>
                 </div>
             </div>
             <div class="col-md-6 text-end">
@@ -152,7 +158,7 @@
                 </td>
                 <td>
                     <span class="badge bg-{{ eval.recommendation_color }} p-2">
-                        {{ eval.recommendation_text }}
+                        {{ eval.recommendation }} - {{ eval.recommendation_text }}
                     </span>
                 </td>
                 <td>
@@ -197,6 +203,30 @@
         </tbody>
     </table>
 </div>
+
+<!-- ページネーション -->
+{% if pagination.total_pages > 1 %}
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ pagination.prev_num }}{% if current_filter %}&filter_level={{ current_filter }}{% endif %}" aria-label="Previous">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+        {% for page_num in range(1, pagination.total_pages + 1) %}
+        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?page={{ page_num }}{% if current_filter %}&filter_level={{ current_filter }}{% endif %}">{{ page_num }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ pagination.next_num }}{% if current_filter %}&filter_level={{ current_filter }}{% endif %}" aria-label="Next">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
 {% else %}
 <div class="alert alert-info">
     このジョブにはまだAI評価済みの候補者がいません。
@@ -220,66 +250,46 @@
 
 <script>
 // 選択状態の管理
-let selectedCandidates = new Map();
+const selectedCandidates = new Map();
+const selectAllCheckbox = document.getElementById('select-all');
+const candidateCheckboxes = document.querySelectorAll('.candidate-select');
+const selectedCountSpan = document.getElementById('selected-count');
+const exportButton = document.querySelector('button[onclick="exportToSheets()"]');
 
-// 全選択チェックボックス
-document.getElementById('select-all').addEventListener('change', function() {
-    const checkboxes = document.querySelectorAll('.candidate-select');
-    checkboxes.forEach(checkbox => {
-        if (!checkbox.closest('tr').classList.contains('d-none')) {
-            checkbox.checked = this.checked;
-            checkbox.dispatchEvent(new Event('change'));
+// UI更新用の関数
+function updateUi() {
+    const count = selectedCandidates.size;
+    selectedCountSpan.textContent = count;
+    exportButton.disabled = count === 0;
+
+    const totalCheckboxes = candidateCheckboxes.length;
+    selectAllCheckbox.checked = totalCheckboxes > 0 && selectedCandidates.size === totalCheckboxes;
+}
+
+// 全選択チェックボックスのイベントリスナー
+selectAllCheckbox.addEventListener('change', function() {
+    candidateCheckboxes.forEach(checkbox => {
+        checkbox.checked = this.checked;
+        if (this.checked) {
+            selectedCandidates.set(checkbox.value, JSON.parse(checkbox.dataset.evaluation));
+        } else {
+            selectedCandidates.delete(checkbox.value);
         }
     });
+    updateUi();
 });
 
-// 個別チェックボックス
-document.querySelectorAll('.candidate-select').forEach(checkbox => {
+// 個別チェックボックスのイベントリスナー
+candidateCheckboxes.forEach(checkbox => {
     checkbox.addEventListener('change', function() {
         if (this.checked) {
             selectedCandidates.set(this.value, JSON.parse(this.dataset.evaluation));
         } else {
             selectedCandidates.delete(this.value);
         }
-        updateSelectedCount();
+        updateUi();
     });
 });
-
-function updateSelectedCount() {
-    const count = selectedCandidates.size;
-    document.getElementById('selected-count').textContent = count;
-    document.querySelector('button[onclick="exportToSheets()"]').disabled = count === 0;
-    
-    // 全選択チェックボックスの状態を更新
-    const visibleCheckboxes = document.querySelectorAll('.candidate-row:not(.d-none) .candidate-select');
-    const checkedCount = document.querySelectorAll('.candidate-row:not(.d-none) .candidate-select:checked').length;
-    document.getElementById('select-all').checked = visibleCheckboxes.length > 0 && visibleCheckboxes.length === checkedCount;
-}
-
-// フィルタリング
-function filterByScore(level) {
-    const rows = document.querySelectorAll('.candidate-row');
-    
-    // ボタンのアクティブ状態を更新
-    document.querySelectorAll('.btn-group button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    rows.forEach(row => {
-        const score = row.dataset.score;
-        
-        if (level === 'all') {
-            row.classList.remove('d-none');
-        } else if (level === 'high') {
-            row.classList.toggle('d-none', score !== 'high');
-        } else if (level === 'medium') {
-            row.classList.toggle('d-none', score === 'low');
-        }
-    });
-    
-    updateSelectedCount();
-}
 
 // 送客リストに追加
 async function exportToSheets() {

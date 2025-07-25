@@ -104,8 +104,10 @@ class AIMatchingService:
             if not job:
                 raise Exception(f"Job {job_id} not found")
             
-            # ジョブステータスを更新
-            await self._update_job_status(job_id, 'running', 0)
+            # ジョブステータスを更新（既にrunningの場合はスキップ）
+            job_status = job.get('status')
+            if job_status != 'running':
+                await self._update_job_status(job_id, 'running', 0)
             
             # 要件情報を取得
             requirement = await self._get_requirement(job['requirement_id'])
@@ -129,6 +131,15 @@ class AIMatchingService:
             # 各候補者を評価
             for candidate in candidates:
                 try:
+                    # ジョブのステータスを確認（停止要求チェック）
+                    current_job = await self._get_job_details(job_id)
+                    if current_job and current_job.get('status') != 'running':
+                        print(f"Job {job_id} status is {current_job.get('status')}, stopping processing")
+                        if current_job.get('status') == 'pending':
+                            # 停止要求された場合
+                            return
+                        break
+                    
                     # 進捗更新
                     progress = int((processed / total_candidates) * 100)
                     await self._update_job_status(job_id, 'running', progress)
@@ -137,6 +148,12 @@ class AIMatchingService:
                     resume_text = candidate.get('candidate_resume', '')
                     job_desc_text = self._format_job_description(requirement)
                     job_memo_text = self._format_job_memo(requirement)
+                    
+                    # レジュメが空の場合はスキップ
+                    if not resume_text:
+                        print(f"[AI Matching] Skipping candidate {candidate.get('id')} - no resume text")
+                        processed += 1
+                        continue
                     
                     # 構造化データの使用状況をログ出力
                     if requirement.get('structured_data', {}).get('basic_info'):
@@ -169,6 +186,12 @@ class AIMatchingService:
                         except Exception as e:
                             print(f"[AI Matching] Failed to parse resume: {e}")
                             # パースに失敗してもマッチングは続行
+                    
+                    # 再度停止チェック（AI処理の直前）
+                    current_job = await self._get_job_details(job_id)
+                    if current_job and current_job.get('status') != 'running':
+                        print(f"Job {job_id} stopped before AI processing")
+                        return
                     
                     # AIマッチング実行
                     if self.matcher and hasattr(self.matcher, 'match_candidate_direct'):
@@ -250,13 +273,20 @@ class AIMatchingService:
         return requirement
     
     async def _get_candidates_for_job(self, job: Dict) -> List[Dict]:
-        """ジョブに関連する候補者を取得"""
+        """ジョブに関連する候補者を取得（未評価の候補者のみ）"""
         # job_parameters から検索条件を取得
         params = job.get('parameters', {})
+        job_id = job.get('id')
         
-        print(f"Getting candidates for job: {job.get('id')}")
+        print(f"Getting candidates for job: {job_id}")
         print(f"  client_id: {job.get('client_id')}")
         print(f"  requirement_id: {job.get('requirement_id')}")
+        
+        # まず、このジョブで既に評価済みの候補者IDを取得
+        evaluated_response = self.supabase.table('ai_evaluations').select('candidate_id').eq('job_id', job_id).execute()
+        evaluated_candidate_ids = [eval['candidate_id'] for eval in (evaluated_response.data or [])]
+        
+        print(f"  Already evaluated candidates: {len(evaluated_candidate_ids)}")
         
         # 候補者を取得（最新のスクレイピング結果から）
         query = self.supabase.table('candidates').select('*')
@@ -275,11 +305,18 @@ class AIMatchingService:
         query = query.order('scraped_at', desc=True).limit(100)
         
         response = query.execute()
-        candidates = response.data or []
+        all_candidates = response.data or []
         
-        print(f"  Found {len(candidates)} candidates")
+        # 評価済みの候補者を除外
+        candidates = [
+            candidate for candidate in all_candidates 
+            if candidate.get('id') not in evaluated_candidate_ids
+        ]
+        
+        print(f"  Total candidates found: {len(all_candidates)}")
+        print(f"  Unevaluated candidates: {len(candidates)}")
         if candidates:
-            print(f"  First candidate: {candidates[0].get('candidate_id')} - {candidates[0].get('candidate_company')}")
+            print(f"  First unevaluated candidate: {candidates[0].get('candidate_id')} - {candidates[0].get('candidate_company')}")
         
         return candidates
     

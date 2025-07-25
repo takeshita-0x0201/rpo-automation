@@ -49,7 +49,12 @@
 
                 <div class="mb-3">
                     <label for="requirement_text" class="form-label">採用要件詳細</label>
-                    <textarea class="form-control" id="requirement_text" name="requirement_text" rows="15" required>{{ requirement.description }}</textarea>
+                    <div class="input-group">
+                        <textarea class="form-control" id="requirement_text" name="requirement_text" rows="15" required>{{ requirement.description }}</textarea>
+                        <button class="btn btn-outline-primary" type="button" id="restructure-btn">
+                            <i class="bi bi-magic"></i> 再構造化
+                        </button>
+                    </div>
                     <div class="form-text">求人票と求人メモを含む全ての情報</div>
                 </div>
 
@@ -71,7 +76,7 @@
 
                 <div class="mb-3">
                     <label for="structured_data" class="form-label">構造化データ (JSON)</label>
-                    <textarea class="form-control" id="structured_data" name="structured_data" rows="10">{{ requirement.structured_data|tojson(indent=2) if requirement.structured_data else '{}' }}</textarea>
+                    <textarea class="form-control" id="structured_data" name="structured_data" rows="10">{{ requirement.structured_data_formatted }}</textarea>
                     <div class="form-text">JSON形式で入力してください。空の場合は {} としてください。</div>
                 </div>
 
@@ -175,6 +180,50 @@ document.getElementById('structured_data').addEventListener('blur', function() {
         this.value = JSON.stringify(parsed, null, 2);
     } catch (error) {
         // エラーの場合は何もしない（ユーザーが編集中の可能性があるため）
+    }
+});
+
+// 再構造化ボタンの処理
+document.getElementById('restructure-btn').addEventListener('click', async function() {
+    const button = this;
+    const originalHtml = button.innerHTML;
+    const textarea = document.getElementById('requirement_text');
+    const originalText = textarea.value;
+
+    if (!originalText.trim()) {
+        alert('再構造化するテキストを入力してください。');
+        return;
+    }
+
+    // ボタンをローディング状態に変更
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 処理中...`;
+
+    try {
+        const response = await fetch('/api/requirements/restructure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // CSRFトークンが必要な場合はヘッダーに追加
+            },
+            body: JSON.stringify({ text: originalText })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        textarea.value = data.restructured_text;
+
+    } catch (error) {
+        console.error('Restructuring failed:', error);
+        alert(`再構造化に失敗しました。\nエラー: ${error.message}`);
+    } finally {
+        // ボタンの状態を元に戻す
+        button.disabled = false;
+        button.innerHTML = originalHtml;
     }
 });
 </script>

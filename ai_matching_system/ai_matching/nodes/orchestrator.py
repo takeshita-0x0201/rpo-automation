@@ -14,6 +14,7 @@ from .base import ResearchState, CycleResult
 from .evaluator import EvaluatorNode
 from .evaluator_enhanced import EnhancedEvaluatorNode
 from .hybrid_evaluator import HybridEvaluatorNode
+from .modular_evaluator import ModularEvaluatorNode
 from .gap_analyzer import GapAnalyzerNode
 from .searcher import TavilySearcherNode
 from .reporter import ReportGeneratorNode
@@ -27,7 +28,7 @@ class DeepResearchOrchestrator:
     
     def __init__(self, gemini_api_key: str, tavily_api_key: Optional[str] = None, 
                  pinecone_api_key: Optional[str] = None, use_enhanced_evaluator: bool = True,
-                 use_hybrid_evaluator: bool = False):
+                 use_hybrid_evaluator: bool = False, use_modular_evaluator: bool = False):
         """
         Args:
             gemini_api_key: Gemini APIキー
@@ -35,14 +36,19 @@ class DeepResearchOrchestrator:
             pinecone_api_key: Pinecone APIキー（オプション）
             use_enhanced_evaluator: 強化版評価ノードを使用するか（デフォルト: True）
             use_hybrid_evaluator: ハイブリッド評価ノードを使用するか（デフォルト: False）
+            use_modular_evaluator: モジュール評価ノードを使用するか（デフォルト: False）
         """
         # 各ノードを初期化
         self.rag_searcher = RAGSearcherNode(gemini_api_key, pinecone_api_key)
         
         # 評価ノードの選択（環境変数も考慮）
+        use_modular = use_modular_evaluator or os.getenv("USE_MODULAR_EVALUATOR", "false").lower() == "true"
         use_hybrid = use_hybrid_evaluator or os.getenv("USE_HYBRID_EVALUATOR", "false").lower() == "true"
         
-        if use_hybrid:
+        if use_modular:
+            self.evaluator = ModularEvaluatorNode(gemini_api_key, os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY"))
+            print("[Orchestrator] モジュール評価ノードを使用します")
+        elif use_hybrid:
             self.evaluator = HybridEvaluatorNode(gemini_api_key, os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY"))
             print("[Orchestrator] ハイブリッド評価ノードを使用します")
         elif use_enhanced_evaluator:

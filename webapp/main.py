@@ -154,29 +154,48 @@ async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_curren
         jobs_response = supabase.table('jobs').select('*').order('job_id', desc=False).execute()
         jobs = jobs_response.data if jobs_response.data else []
         
-        # 対象候補者数を追加（簡素化版）
+        # 対象候補者数を追加（改善版）
         for job in jobs:
             try:
-                # 基本的なcandidate_countのみ設定（既存ロジック）
-                if job.get('status') == 'completed':
-                    job['candidate_count'] = job.get('candidate_count', 0)
-                elif job.get('status') in ['pending', 'ready', 'running']:
-                    job_params = job.get('parameters', {})
-                    client_id = job.get('client_id')
-                    requirement_id = job.get('requirement_id')
-                    
-                    actual_count = candidate_counter.count_candidates(job_params, client_id, requirement_id)
-                    if actual_count is not None:
-                        job['candidate_count'] = actual_count
-                    else:
-                        job['candidate_count'] = candidate_counter.get_error_message()
-                else:
-                    job['candidate_count'] = 0
+                job_id = job.get('id')
+                requirement_id = job.get('requirement_id')
                 
-                # 分数表記は後で実装予定として、今は基本値を設定
-                job['evaluated_count'] = 0
-                job['total_candidates'] = 0
-                job['progress_fraction'] = "0/0"
+                if requirement_id:
+                    # 全候補者数を取得
+                    all_candidates_response = supabase.table('candidates').select(
+                        'id', count='exact'
+                    ).eq('requirement_id', requirement_id).execute()
+                    total_candidates = all_candidates_response.count or 0
+                    
+                    # 評価済み候補者数を取得
+                    evaluated_response = supabase.table('ai_evaluations').select(
+                        'id', count='exact'
+                    ).eq('job_id', job_id).execute()
+                    evaluated_count = evaluated_response.count or 0
+                    
+                    # 未評価候補者数を計算
+                    unevaluated_count = total_candidates - evaluated_count
+                    
+                    # ジョブのステータスに応じて表示を調整
+                    if job.get('status') == 'completed':
+                        # 完了したジョブは評価済み数を表示
+                        job['candidate_count'] = evaluated_count
+                        job['progress_fraction'] = f"{evaluated_count}/{evaluated_count}"
+                    else:
+                        # 未完了のジョブは未評価数を対象として表示
+                        job['candidate_count'] = unevaluated_count
+                        job['progress_fraction'] = f"{evaluated_count}/{total_candidates}"
+                    
+                    job['evaluated_count'] = evaluated_count
+                    job['total_candidates'] = total_candidates
+                    job['unevaluated_count'] = unevaluated_count
+                else:
+                    # requirement_idがない場合のフォールバック
+                    job['candidate_count'] = 0
+                    job['evaluated_count'] = 0
+                    job['total_candidates'] = 0
+                    job['unevaluated_count'] = 0
+                    job['progress_fraction'] = "0/0"
                 
             except Exception as e:
                 print(f"Error processing job {job.get('id', 'unknown')}: {e}")
@@ -184,6 +203,7 @@ async def admin_jobs(request: Request, user: Optional[dict] = Depends(get_curren
                 job['candidate_count'] = 0
                 job['evaluated_count'] = 0
                 job['total_candidates'] = 0
+                job['unevaluated_count'] = 0
                 job['progress_fraction'] = "0/0"
         
         # ステータス別カウント
@@ -269,6 +289,38 @@ async def admin_job_details(job_id: str, request: Request, user: Optional[dict] 
             except Exception as eval_error:
                 print(f"Error fetching evaluations: {eval_error}")
                 # 評価取得エラーも無視して続行
+        
+        # 未評価候補者数を取得
+        unevaluated_count = 0
+        total_candidates_count = 0
+        if job.get('requirement_id'):
+            try:
+                # 全候補者数を取得
+                all_candidates_response = supabase.table('candidates').select(
+                    'id', count='exact'
+                ).eq('requirement_id', job['requirement_id']).execute()
+                total_candidates_count = all_candidates_response.count or 0
+                
+                # 評価済み候補者IDを取得
+                evaluated_response = supabase.table('ai_evaluations').select(
+                    'candidate_id'
+                ).eq('job_id', job_id).execute()
+                evaluated_ids = [eval['candidate_id'] for eval in (evaluated_response.data or [])]
+                
+                # 未評価候補者数を計算
+                evaluated_count = len(evaluated_ids)
+                unevaluated_count = total_candidates_count - evaluated_count
+                
+                # ジョブに追加情報を設定
+                job['total_candidates'] = total_candidates_count
+                job['evaluated_count'] = evaluated_count
+                job['unevaluated_count'] = unevaluated_count
+                
+            except Exception as count_error:
+                print(f"Error counting candidates: {count_error}")
+                job['total_candidates'] = 0
+                job['evaluated_count'] = 0
+                job['unevaluated_count'] = 0
         
     except Exception as e:
         import traceback
