@@ -20,8 +20,6 @@ def get_db():
     return get_supabase_service_client()
 
 router = APIRouter()
-
-router = APIRouter()
 templates_path = pathlib.Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_path))
 
@@ -233,18 +231,19 @@ async def edit_requirement(
         clients_response = db.table('clients').select('id, name').eq('is_active', True).order('name').execute()
         clients = clients_response.data if clients_response.data else []
 
+        return templates.TemplateResponse("admin/requirements_edit.html", {
+            "request": request,
+            "current_user": user,
+            "requirement": requirement,
+            "clients": clients,
+            "page": "requirements"
+        })
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error in edit_requirement: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-        return templates.TemplateResponse("admin/requirements_edit.html", {
-        "request": request,
-        "current_user": user,
-        "requirement": requirement,
-        "clients": clients,
-        "page": "requirements"
-    })
 
 @router.post("/admin/requirements/{requirement_id}/update")
 async def update_requirement(
