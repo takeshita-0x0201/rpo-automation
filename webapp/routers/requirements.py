@@ -9,6 +9,102 @@ from uuid import UUID
 import json
 from core.ai.gemini_client import GeminiClient
 
+def parse_iso_datetime(date_string: str) -> datetime:
+    """ISO形式の日付文字列を安全にパースする（全Pythonバージョン対応）"""
+    if not date_string:
+        return datetime.now()
+    
+    try:
+        # オリジナルの文字列を保存
+        original_string = date_string
+        
+        # Zを+00:00に置き換え
+        date_string = date_string.replace('Z', '+00:00')
+        
+        # まず、Python 3.7+のfromisoformatを試す（存在する場合）
+        if hasattr(datetime, 'fromisoformat'):
+            try:
+                # マイクロ秒が6桁を超える場合は切り詰める
+                if '.' in date_string:
+                    base, microseconds_and_tz = date_string.split('.', 1)
+                    # タイムゾーン部分を分離
+                    if '+' in microseconds_and_tz:
+                        microseconds, tz = microseconds_and_tz.split('+', 1)
+                        tz = '+' + tz
+                    elif '-' in microseconds_and_tz and len(microseconds_and_tz) > 6:
+                        # タイムゾーンの'-'を探す（マイクロ秒部分の後）
+                        for i in range(6, len(microseconds_and_tz)):
+                            if microseconds_and_tz[i] == '-':
+                                microseconds = microseconds_and_tz[:i]
+                                tz = microseconds_and_tz[i:]
+                                break
+                        else:
+                            microseconds = microseconds_and_tz
+                            tz = ''
+                    else:
+                        microseconds = microseconds_and_tz
+                        tz = ''
+                    
+                    # マイクロ秒を6桁に調整
+                    microseconds = microseconds[:6].ljust(6, '0')
+                    date_string = f"{base}.{microseconds}{tz}"
+                
+                return datetime.fromisoformat(date_string)
+            except Exception:
+                pass
+        
+        # Python 3.6以前またはfromisoformatが失敗した場合
+        # タイムゾーン情報とマイクロ秒を手動で処理
+        date_string = original_string.replace('Z', '')
+        
+        # タイムゾーンオフセットを抽出
+        tz_offset = None
+        if '+' in date_string[-6:] or (date_string.count('-') > 2 and '-' in date_string[-6:]):
+            # タイムゾーンがある場合
+            if '+' in date_string[-6:]:
+                dt_part, tz_part = date_string.rsplit('+', 1)
+                tz_offset = '+' + tz_part
+            else:
+                # 最後の'-'がタイムゾーンの場合
+                parts = date_string.split('-')
+                if len(parts[-1]) <= 4 and ':' in parts[-1]:  # タイムゾーンの形式
+                    dt_part = '-'.join(parts[:-1])
+                    tz_offset = '-' + parts[-1]
+                else:
+                    dt_part = date_string
+            date_string = dt_part
+        
+        # マイクロ秒を処理
+        if '.' in date_string:
+            dt_part, microseconds = date_string.split('.', 1)
+            # マイクロ秒を6桁に調整
+            microseconds = int(microseconds[:6].ljust(6, '0'))
+            dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S')
+            dt = dt.replace(microsecond=microseconds)
+        else:
+            dt = datetime.strptime(date_string, '%Y-%m-%dT%H:%M:%S')
+        
+        return dt
+        
+    except Exception as e:
+        logger.warning(f"Failed to parse datetime '{date_string}': {e}")
+        # 最終的なフォールバック
+        try:
+            # 基本的な形式のみを抽出
+            basic_format = date_string.split('.')[0].split('+')[0].split('Z')[0]
+            if basic_format.count('-') > 2:
+                # タイムゾーンの'-'を除去
+                parts = basic_format.split('T')
+                if len(parts) == 2:
+                    date_part = parts[0]
+                    time_part = parts[1].split('-')[0]  # タイムゾーンを除去
+                    basic_format = f"{date_part}T{time_part}"
+            
+            return datetime.strptime(basic_format, '%Y-%m-%dT%H:%M:%S')
+        except Exception:
+            logger.error(f"Unable to parse datetime '{date_string}', using current time")
+            return datetime.now()
+
 router = APIRouter()
 
 class RequirementCreate(BaseModel):
@@ -92,8 +188,8 @@ async def list_requirements(
                     remote_work=req.get('structured_data', {}).get('remote_work', 'not_allowed') if req.get('structured_data') else 'not_allowed',
                     benefits=req.get('structured_data', {}).get('benefits', []) if req.get('structured_data') else [],
                     is_active=req.get('is_active', True),
-                    created_at=datetime.fromisoformat(req['created_at'].replace('Z', '+00:00')) if req.get('created_at') else datetime.now(),
-                    updated_at=datetime.fromisoformat(req['updated_at'].replace('Z', '+00:00')) if req.get('updated_at') else datetime.now()
+                    created_at=parse_iso_datetime(req.get('created_at', '')),
+                    updated_at=parse_iso_datetime(req.get('updated_at', ''))
                 ))
             return requirements
         else:
