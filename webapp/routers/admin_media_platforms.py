@@ -220,7 +220,7 @@ async def delete_media_platform(
 ):
     """媒体プラットフォーム削除"""
     if not user or user.get("role") != "admin":
-        return RedirectResponse(url="/admin/media-platforms?error=unauthorized", status_code=303)
+        return {"success": False, "error": "Unauthorized"}
     
     try:
         # サービスクライアントを使用（RLSバイパス）
@@ -229,7 +229,7 @@ async def delete_media_platform(
         # まず削除対象が存在するか確認
         check_response = supabase.table("media_platforms").select('id').eq('id', platform_id).execute()
         if not check_response.data:
-            return RedirectResponse(url="/admin/media-platforms?error=not_found", status_code=303)
+            return {"success": False, "error": "Media platform not found"}
         
         # 削除実行
         result = supabase.table("media_platforms").delete().eq("id", platform_id).execute()
@@ -238,15 +238,15 @@ async def delete_media_platform(
         if not result.data:
             raise Exception("削除に失敗しました")
         
-        return RedirectResponse(url="/admin/media-platforms?success=deleted", status_code=303)
+        return {"success": True, "message": "Media platform deleted successfully"}
             
     except Exception as e:
         error_msg = str(e)
         if "violates foreign key constraint" in error_msg:
             # 外部キー制約エラー
             print(f"Foreign key constraint error deleting media platform: {error_msg}")
-            return RedirectResponse(url="/admin/media-platforms?error=has_related_data", status_code=303)
+            return {"success": False, "error": "このプラットフォームは他のデータで使用されているため削除できません"}
         else:
             # その他のエラー
             print(f"Error deleting media platform: {error_msg}")
-            return RedirectResponse(url="/admin/media-platforms?error=delete_failed", status_code=303)
+            return {"success": False, "error": "削除に失敗しました"}
