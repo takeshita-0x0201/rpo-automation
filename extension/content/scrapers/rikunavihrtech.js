@@ -73,6 +73,26 @@ class RikunaviHRTechScraper {
     try {
       console.log('RikunaviHRTechScraper.startScraping called with:', sessionData);
       
+      // CAPTCHA・アクセス制限のチェック
+      if (ScrapingUtil.detectCaptcha()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+        });
+        return { success: false, message: 'CAPTCHA検出' };
+      }
+      
+      if (ScrapingUtil.detectRateLimit()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'レート制限が検出されました。しばらく待ってから再試行してください。'
+        });
+        return { success: false, message: 'レート制限検出' };
+      }
+      
+      // セッション管理を開始
+      ScrapingUtil.sessionManager.startSession();
+      
       // セッション情報を保存
       this.sessionInfo = sessionData;
       
@@ -107,10 +127,14 @@ class RikunaviHRTechScraper {
       // 候補者データを抽出
       const results = await this.extractCandidatesData();
       
+      // セッション統計をログ
+      const sessionDuration = ScrapingUtil.sessionManager.getSessionDuration();
+      console.log(`Session statistics: Duration=${Math.round(sessionDuration)}分, Actions=${ScrapingUtil.sessionManager.actionCount}`);
+      
       // 完了通知
       const completionMessage = this.isRunning ? 
-        `完了: ${results.length}件の候補者を取得しました` :
-        `停止: ${results.length}件取得`;
+        `完了: ${results.length}件の候補者を取得しました（セッション時間: ${Math.round(sessionDuration)}分）` :
+        `停止: ${results.length}件取得（セッション時間: ${Math.round(sessionDuration)}分）`;
       
       await this.updateProgress({
         status: this.isRunning ? 'completed' : 'stopped',
@@ -122,7 +146,8 @@ class RikunaviHRTechScraper {
       return {
         success: true,
         message: `${results.length}件の候補者データを取得しました`,
-        count: results.length
+        count: results.length,
+        sessionDuration: Math.round(sessionDuration)
       };
       
     } catch (error) {
@@ -157,6 +182,25 @@ class RikunaviHRTechScraper {
       }
       
       if (!this.isRunning) break;
+      
+      // CAPTCHA・アクセス制限の定期チェック
+      if (ScrapingUtil.detectCaptcha()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+        });
+        this.stop();
+        break;
+      }
+      
+      if (ScrapingUtil.detectRateLimit()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'レート制限が検出されました。しばらく待ってから再試行してください。'
+        });
+        this.stop();
+        break;
+      }
       
       console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📋 [${i}/${cardCount}] 処理中...`);
@@ -199,6 +243,9 @@ class RikunaviHRTechScraper {
               }
             });
             
+            // アクションを記録
+            ScrapingUtil.sessionManager.recordAction();
+            
             // バッチサイズに達したら送信
             if (this.currentBatch.length >= this.config.batchSize) {
               await this.sendBatchData();
@@ -206,10 +253,45 @@ class RikunaviHRTechScraper {
           }
           
           // 詳細パネルを閉じる
-          this.closeDetailPanel();
+          await this.closeDetailPanel();
           
-          // 次のカードの処理前に待機
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // セッション管理による休憩チェック（カード切り替え時）
+          if (i % 20 === 0 && i > 0) {
+            const breakCheck = ScrapingUtil.sessionManager.shouldTakeBreak({
+              maxDuration: ScrapingUtil.getHumanLikeDelay(20, 0.25), // 15-25分のランダム
+              maxActions: Math.floor(ScrapingUtil.getHumanLikeDelay(60, 0.3)), // 40-80アクションのランダム
+              breakProbability: 0.1 // 10%の確率でランダム休憩
+            });
+            
+            if (breakCheck.shouldBreak) {
+              const breakReason = {
+                duration: 'セッション時間が長くなったため',
+                actions: 'アクション数が多くなったため',
+                random: 'ランダムな休憩タイミング'
+              }[breakCheck.reason];
+              
+              await this.updateProgress({
+                status: 'break',
+                totalCandidates: this.totalScrapedCount,
+                message: `${breakReason}、休憩を取ります...`
+              });
+              
+              await ScrapingUtil.sessionManager.takeBreak({
+                minDuration: 300000,  // 最小5分
+                maxDuration: 900000,  // 最大15分
+                message: 'セッション休憩中'
+              });
+              
+              await this.updateProgress({
+                status: 'running',
+                totalCandidates: this.totalScrapedCount,
+                message: 'スクレイピングを再開しました'
+              });
+            }
+          }
+          
+          // 次のカードの処理前に人間らしい待機
+          await ScrapingUtil.humanLikeWait(800, 1500);
         }
         
       } catch (error) {
@@ -257,9 +339,10 @@ class RikunaviHRTechScraper {
     
     if (element) {
       console.log(`✓ カード${cardIndex}をクリック`);
-      element.click();
-      // 詳細パネルが完全に開くまで待機
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 人間らしいクリック
+      await ScrapingUtil.humanLikeClick(element);
+      // 詳細パネルが完全に開くまで人間らしい待機
+      await ScrapingUtil.humanLikeWait(1500, 2500);
       return true;
     } else {
       console.log(`❌ カード${cardIndex}が見つかりません`);
@@ -269,9 +352,9 @@ class RikunaviHRTechScraper {
 
   /**
    * 詳細パネルを閉じる
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    */
-  closeDetailPanel() {
+  async closeDetailPanel() {
     const closeButton = document.evaluate(
       this.closeButtonXPath, 
       document, 
@@ -282,6 +365,8 @@ class RikunaviHRTechScraper {
     
     if (closeButton) {
       console.log('✓ 閉じるボタンをクリック');
+      // 人間らしいクリック（少し待ってから閉じる）
+      await ScrapingUtil.preClickDelay();
       closeButton.click();
       return true;
     } else {

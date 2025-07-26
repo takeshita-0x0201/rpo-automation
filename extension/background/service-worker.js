@@ -120,6 +120,9 @@ async function handleMessage(request, sender) {
     case 'UPDATE_PROGRESS':
       return await updateProgress(request.data);
     
+    case 'CAPTURE_SCREENSHOT':
+      return await captureScreenshot(request.data, sender);
+    
     default:
       return { error: 'Unknown message type' };
   }
@@ -722,4 +725,137 @@ async function notifyError(error) {
     title: 'RPO Automation エラー',
     message: error
   });
+}
+
+// スクリーンショットをキャプチャして保存
+async function captureScreenshot(data, sender) {
+  try {
+    const { errorType, errorMessage, errorDetails } = data;
+    
+    // アクティブなタブを取得
+    let tabId = sender?.tab?.id;
+    if (!tabId) {
+      // senderがない場合は現在のアクティブタブを取得
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = activeTab?.id;
+    }
+    
+    if (!tabId) {
+      console.error('No active tab found for screenshot');
+      return { success: false, error: 'タブが見つかりません' };
+    }
+    
+    // スクリーンショットをキャプチャ
+    const screenshot = await chrome.tabs.captureVisibleTab(null, {
+      format: 'png',
+      quality: 90
+    });
+    
+    // タイムスタンプを生成
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `rpo-error-${errorType}-${timestamp}.png`;
+    
+    // エラー情報と共に保存
+    const errorData = {
+      timestamp: new Date().toISOString(),
+      errorType: errorType || 'unknown',
+      errorMessage: errorMessage || 'Unknown error',
+      errorDetails: errorDetails || {},
+      url: sender?.tab?.url || 'unknown',
+      sessionId: scrapingState.sessionId,
+      clientId: scrapingState.clientId,
+      requirementId: scrapingState.requirementId,
+      screenshot: screenshot,
+      filename: filename
+    };
+    
+    // ローカルストレージに保存（最大10枚まで）
+    const storage = await chrome.storage.local.get('error_screenshots');
+    const screenshots = storage.error_screenshots || [];
+    
+    // 新しいスクリーンショットを追加
+    screenshots.unshift(errorData);
+    
+    // 古いものを削除（10枚まで）
+    if (screenshots.length > 10) {
+      screenshots.splice(10);
+    }
+    
+    // 保存
+    await chrome.storage.local.set({ error_screenshots: screenshots });
+    
+    // ダウンロードも実行（オプション）
+    if (data.download !== false) {
+      const blob = await fetch(screenshot).then(r => r.blob());
+      const url = URL.createObjectURL(blob);
+      
+      chrome.downloads.download({
+        url: url,
+        filename: `RPO-Screenshots/${filename}`,
+        saveAs: false
+      }, (downloadId) => {
+        // ダウンロード完了後にURLを解放
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      });
+    }
+    
+    console.log(`Screenshot captured: ${filename}`);
+    
+    // デバッグ情報も含めてログ出力
+    console.error('Error details:', {
+      type: errorType,
+      message: errorMessage,
+      details: errorDetails,
+      url: sender?.tab?.url,
+      session: {
+        sessionId: scrapingState.sessionId,
+        clientId: scrapingState.clientId,
+        requirementId: scrapingState.requirementId
+      }
+    });
+    
+    return { 
+      success: true, 
+      filename: filename,
+      message: 'スクリーンショットを保存しました'
+    };
+    
+  } catch (error) {
+    console.error('Screenshot capture error:', error);
+    return { 
+      success: false, 
+      error: error.message || 'スクリーンショットの保存に失敗しました'
+    };
+  }
+}
+
+// 保存されたエラースクリーンショットを取得
+async function getErrorScreenshots() {
+  try {
+    const storage = await chrome.storage.local.get('error_screenshots');
+    return { 
+      success: true, 
+      screenshots: storage.error_screenshots || [] 
+    };
+  } catch (error) {
+    console.error('Get screenshots error:', error);
+    return { 
+      success: false, 
+      error: 'スクリーンショットの取得に失敗しました' 
+    };
+  }
+}
+
+// エラースクリーンショットをクリア
+async function clearErrorScreenshots() {
+  try {
+    await chrome.storage.local.remove('error_screenshots');
+    return { success: true };
+  } catch (error) {
+    console.error('Clear screenshots error:', error);
+    return { 
+      success: false, 
+      error: 'スクリーンショットのクリアに失敗しました' 
+    };
+  }
 }

@@ -30,6 +30,26 @@ class OpenWorkScraper {
   async startScraping(sessionData) {
     console.log('Starting OpenWork scraping with session:', sessionData);
     
+    // CAPTCHA・アクセス制限のチェック
+    if (ScrapingUtil.detectCaptcha()) {
+      await this.updateProgress({
+        status: 'error',
+        message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+      });
+      return { success: false, message: 'CAPTCHA検出' };
+    }
+    
+    if (ScrapingUtil.detectRateLimit()) {
+      await this.updateProgress({
+        status: 'error',
+        message: 'レート制限が検出されました。しばらく待ってから再試行してください。'
+      });
+      return { success: false, message: 'レート制限検出' };
+    }
+    
+    // セッション管理を開始
+    ScrapingUtil.sessionManager.startSession();
+    
     this.isActive = true;
     this.isPaused = false;
     this.sessionData = sessionData;
@@ -52,7 +72,11 @@ class OpenWorkScraper {
         await this.continueScraping();
       }
       
-      return { success: true, stats: this.stats };
+      // セッション統計をログ
+      const sessionDuration = ScrapingUtil.sessionManager.getSessionDuration();
+      console.log(`Session statistics: Duration=${Math.round(sessionDuration)}分, Actions=${ScrapingUtil.sessionManager.actionCount}`);
+      
+      return { success: true, stats: this.stats, sessionDuration: Math.round(sessionDuration) };
     } catch (error) {
       console.error('Scraping error:', error);
       return { success: false, error: error.message };
@@ -63,11 +87,10 @@ class OpenWorkScraper {
   async scrapeCurrentBatch() {
     console.log('Scraping current batch...');
     
-    // 最初の処理前にもランダムな待機（1-3秒）
+    // 最初の処理前にも人間らしい待機
     if (this.stats.processed === 0) {
-      const initialDelay = Math.floor(Math.random() * 2001) + 1000; // 1000-3000ms
-      console.log(`Initial wait: ${initialDelay/1000} seconds before first scraping...`);
-      await this.wait(initialDelay);
+      await ScrapingUtil.humanLikeWait(1000, 3000);
+      console.log('Initial wait before first scraping...');
     }
     
     // ドロワー要素を確認
@@ -94,6 +117,34 @@ class OpenWorkScraper {
       }
       
       this.stats.processed++;
+      
+      // アクションを記録
+      ScrapingUtil.sessionManager.recordAction();
+      
+      // セッション管理による休憩チェック
+      const breakCheck = ScrapingUtil.sessionManager.shouldTakeBreak({
+        maxDuration: ScrapingUtil.getHumanLikeDelay(25, 0.3), // 17-32分のランダム
+        maxActions: Math.floor(ScrapingUtil.getHumanLikeDelay(70, 0.3)), // 50-90アクションのランダム
+        breakProbability: 0.08 // 8%の確率でランダム休憩
+      });
+      
+      if (breakCheck.shouldBreak) {
+        const breakReason = {
+          duration: 'セッション時間が長くなったため',
+          actions: 'アクション数が多くなったため',
+          random: 'ランダムな休憩タイミング'
+        }[breakCheck.reason];
+        
+        this.updateUI(`${breakReason}、休憩を取ります...`, 'info');
+        
+        await ScrapingUtil.sessionManager.takeBreak({
+          minDuration: 300000,  // 最小5分
+          maxDuration: 900000,  // 最大15分
+          message: 'セッション休憩中'
+        });
+        
+        this.updateUI('スクレイピングを再開しました', 'info');
+      }
       
       // 進捗状況を更新
       await chrome.runtime.sendMessage({
@@ -311,7 +362,7 @@ class OpenWorkScraper {
       
       if (currentId && currentId !== previousCandidateId) {
         console.log('Candidate changed to:', currentId);
-        await this.wait(500); // 追加の安定待機
+        await DomUtil.sleep(ScrapingUtil.getHumanLikeDelay(500, 0.3)); // 追加の安定待機
         return;
       }
       
@@ -330,14 +381,16 @@ class OpenWorkScraper {
     // ページ数制限に達した場合
     if (this.sessionData.pageLimit && this.stats.processed >= this.sessionData.pageLimit) {
       console.log('Page limit reached');
-      this.updateUI('ページ数制限に達しました', 'success');
+      const sessionDuration = ScrapingUtil.sessionManager.getSessionDuration();
+      this.updateUI(`ページ数制限に達しました（セッション時間: ${Math.round(sessionDuration)}分）`, 'success');
       
       // 完了を通知
       await chrome.runtime.sendMessage({
         type: 'SCRAPING_COMPLETE',
         data: {
           sessionId: this.sessionData.sessionId,
-          stats: this.stats
+          stats: this.stats,
+          sessionDuration: Math.round(sessionDuration)
         }
       });
       return;
@@ -399,18 +452,34 @@ class OpenWorkScraper {
         const currentCandidateId = this.getCurrentCandidateId();
         console.log('Current candidate ID:', currentCandidateId);
         
-        // クリック前に待機（5-10秒のランダム）
-        const minDelay = 5000; // 5秒
-        const maxDelay = 10000; // 10秒
-        const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        console.log(`Waiting ${randomDelay/1000} seconds before clicking next button...`);
-        await this.wait(randomDelay);
+        // クリック前に人間らしい待機
+        await ScrapingUtil.humanLikeWait(5000, 10000);
+        console.log('Waiting before clicking next button...');
         
-        // 次の候補者へ
-        nextButton.click();
+        // 次の候補者へ（人間らしいクリック）
+        await ScrapingUtil.humanLikeClick(nextButton);
         
         // ページが更新されるのを待つ（候補者IDの変更を待つ）
         await this.waitForCandidateChange(currentCandidateId);
+        
+        // CAPTCHA・アクセス制限の定期チェック
+        if (ScrapingUtil.detectCaptcha()) {
+          await this.updateProgress({
+            status: 'error',
+            message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+          });
+          this.stop();
+          return;
+        }
+        
+        if (ScrapingUtil.detectRateLimit()) {
+          await this.updateProgress({
+            status: 'error',
+            message: 'レート制限が検出されました。しばらく待ってから再試行してください。'
+          });
+          this.stop();
+          return;
+        }
         
         // 次の候補者をスクレイピング
         await this.scrapeCurrentBatch();
@@ -520,6 +589,18 @@ class OpenWorkScraper {
   // 待機処理
   wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // 進捗状況を更新
+  async updateProgress(progressData) {
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'UPDATE_PROGRESS',
+        data: progressData
+      });
+    } catch (error) {
+      // エラーを無視（ポップアップが閉じている場合など）
+    }
   }
 
   // UI更新
@@ -719,11 +800,10 @@ window.testOpenWork = {
           scraper.stats.success++;
         }
         
-        // 次のページへ移動する前に待機
+        // 次のページへ移動する前に人間らしい待機
         if (i < pageLimit - 1) {
-          const randomInterval = Math.floor(Math.random() * 5001) + 5000; // 5000-10000ms
-          console.log(`Waiting ${randomInterval/1000} seconds before next page...`);
-          await new Promise(resolve => setTimeout(resolve, randomInterval));
+          await ScrapingUtil.humanLikeWait(5000, 10000);
+          console.log('Waiting before next page...');
           
           // 次へボタンをクリック
           const nextButton = this.findNextButton();
@@ -731,8 +811,8 @@ window.testOpenWork = {
             console.log('Clicking next button...');
             nextButton.click();
             
-            // ページの更新を待つ
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // ページの更新を待つ（人間らしい待機）
+            await ScrapingUtil.humanLikeWait(1500, 2500);
           } else {
             console.log('Next button not found or disabled');
             break;

@@ -21,7 +21,7 @@ class EvaluatorNode(BaseNode):
     def __init__(self, api_key: str, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
         super().__init__("Evaluator")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Supabaseクライアントの初期化
         self.supabase_client = None

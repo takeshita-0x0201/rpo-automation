@@ -24,7 +24,7 @@ class EnhancedEvaluatorNode(BaseNode):
     def __init__(self, api_key: str, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
         super().__init__("EnhancedEvaluator")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Supabaseクライアントの初期化
         self.supabase_client = None
@@ -506,9 +506,14 @@ class EnhancedEvaluatorNode(BaseNode):
         original_score = evaluation.score
         career_penalty = 0
         if career_assessment.penalty_score > 0:
-            career_penalty = int(original_score * career_assessment.penalty_score)
+            # 業界経験の評価配分を最大30%とし、異業種転職の成功率を考慮
+            MAX_CAREER_PENALTY_RATIO = 0.30
+            adjusted_penalty = min(career_assessment.penalty_score, MAX_CAREER_PENALTY_RATIO)
+            # さらに異業種転職の成功率（約60%）を考慮し、リスクの半分を最大減点とする
+            final_penalty = adjusted_penalty * 0.67  # 最大20%の減点
+            career_penalty = int(original_score * final_penalty)
             evaluation.score = max(0, original_score - career_penalty)
-            print(f"  キャリア継続性による減点: -{career_penalty}点 ({original_score}→{evaluation.score})")
+            print(f"  キャリア継続性による減点: -{career_penalty}点 ({original_score}→{evaluation.score}) [元のペナルティ: {int(career_assessment.penalty_score*100)}%]")
         
         # 年齢・経験社数による調整を適用
         age_exp_adjusted_score = evaluation.score

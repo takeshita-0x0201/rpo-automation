@@ -25,6 +25,36 @@ class BizReachScraper {
     try {
       console.log('BizReachScraper.startScraping called with:', sessionData);
       
+      // CAPTCHA・アクセス制限のチェック
+      if (ScrapingUtil.detectCaptcha()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+        });
+        // エラー時のスクリーンショットを撮影
+        await DebugUtil.captureErrorScreenshot('captcha', 'CAPTCHA検出', {
+          url: window.location.href,
+          platform: 'bizreach'
+        });
+        return { success: false, message: 'CAPTCHA検出' };
+      }
+      
+      if (ScrapingUtil.detectRateLimit()) {
+        await this.updateProgress({
+          status: 'error',
+          message: 'レート制限が検出されました。しばらく待ってから再試行してください。'
+        });
+        // エラー時のスクリーンショットを撮影
+        await DebugUtil.captureErrorScreenshot('rate-limit', 'レート制限検出', {
+          url: window.location.href,
+          platform: 'bizreach'
+        });
+        return { success: false, message: 'レート制限検出' };
+      }
+      
+      // セッション管理を開始
+      ScrapingUtil.sessionManager.startSession();
+      
       // セッション情報を保存
       this.sessionInfo = sessionData;
       
@@ -66,6 +96,46 @@ class BizReachScraper {
         
         if (!this.isRunning) break;
         
+        // CAPTCHA・アクセス制限の定期チェック
+        if (ScrapingUtil.detectCaptcha()) {
+          await this.updateProgress({
+            status: 'error',
+            message: 'CAPTCHAが検出されました。手動で認証を完了してください。'
+          });
+          this.stop();
+          break;
+        }
+        
+        if (ScrapingUtil.detectRateLimit()) {
+          // レート制限検出時は自動バックオフで再試行
+          await this.updateProgress({
+            status: 'warning',
+            message: 'レート制限を検出。自動的に待機して再試行します...'
+          });
+          
+          // 指数バックオフで待機
+          await ScrapingUtil.exponentialBackoff(1, {
+            baseDelay: 60000, // 1分から開始
+            onWait: (delay) => {
+              this.updateProgress({
+                status: 'waiting',
+                message: `レート制限回避のため ${Math.round(delay / 1000)} 秒待機中...`
+              });
+            }
+          });
+          
+          // 再度チェック
+          if (ScrapingUtil.detectRateLimit()) {
+            // まだ制限されている場合は停止
+            await this.updateProgress({
+              status: 'error',
+              message: 'レート制限が継続しています。しばらく待ってから再試行してください。'
+            });
+            this.stop();
+            break;
+          }
+        }
+        
         // 現在のページをスクレイピング
         const pageResult = await this.scrapeCurrentPage();
         
@@ -79,16 +149,55 @@ class BizReachScraper {
           break;
         }
         
-        // 10件ごとに休憩
-        if (this.totalScrapedCount > 0 && this.totalScrapedCount % 10 === 0) {
-          const breakTime = Math.floor(Math.random() * 10000) + 20000; // 20-30秒
+        // アクションを記録
+        ScrapingUtil.sessionManager.recordAction();
+        
+        // セッション管理による休憩チェック
+        const breakCheck = ScrapingUtil.sessionManager.shouldTakeBreak({
+          maxDuration: ScrapingUtil.getHumanLikeDelay(30, 0.3), // 25-35分のランダム
+          maxActions: Math.floor(ScrapingUtil.getHumanLikeDelay(80, 0.25)), // 60-100アクションのランダム
+          breakProbability: 0.05 // 5%の確率でランダム休憩
+        });
+        
+        if (breakCheck.shouldBreak) {
+          const breakReason = {
+            duration: 'セッション時間が長くなったため',
+            actions: 'アクション数が多くなったため',
+            random: 'ランダムな休憩タイミング'
+          }[breakCheck.reason];
+          
           await this.updateProgress({
             status: 'break',
             currentPage: pageNumber,
             totalCandidates: this.candidates.length,
-            message: `${Math.floor(breakTime / 1000)}秒間休憩中...`
+            message: `${breakReason}、休憩を取ります...`
           });
-          await new Promise(resolve => setTimeout(resolve, breakTime));
+          
+          await ScrapingUtil.sessionManager.takeBreak({
+            minDuration: 300000,  // 最小5分
+            maxDuration: 900000,  // 最大15分
+            message: 'セッション休憩中'
+          });
+          
+          await this.updateProgress({
+            status: 'running',
+            currentPage: pageNumber,
+            totalCandidates: this.candidates.length,
+            message: 'スクレイピングを再開しました'
+          });
+        }
+        
+        // 10件ごとの短い休憩も維持（人間らしさのため）
+        if (this.totalScrapedCount > 0 && this.totalScrapedCount % 10 === 0) {
+          // 人間らしい休憩時間（20-30秒、ガウス分布）
+          const breakTime = ScrapingUtil.getHumanLikeDelay(25000, 0.2); // 平均25秒、変動20%
+          await this.updateProgress({
+            status: 'break',
+            currentPage: pageNumber,
+            totalCandidates: this.candidates.length,
+            message: `${Math.floor(breakTime / 1000)}秒間の小休憩中...`
+          });
+          await DomUtil.sleep(Math.round(breakTime));
         }
         
         // 次のページへの遷移（ページ数制限をチェック）
@@ -97,15 +206,14 @@ class BizReachScraper {
           
           if (hasNextPage) {
             pageNumber++;
-            // ページ遷移後の待機時間（5-10秒）
-            const waitTime = Math.floor(Math.random() * 5000) + 5000;
+            // ページ遷移後の人間らしい待機時間
+            await ScrapingUtil.humanLikeWait(5000, 10000);
             await this.updateProgress({
               status: 'waiting',
               currentPage: pageNumber,
               totalCandidates: this.candidates.length,
-              message: `ページ ${pageNumber}/${pageLimit} を読み込み中... (${Math.floor(waitTime / 1000)}秒)`
+              message: `ページ ${pageNumber}/${pageLimit} を読み込み中...`
             });
-            await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         } else {
           // ページ数制限に達した
@@ -119,12 +227,16 @@ class BizReachScraper {
         }
       }
       
+      // セッション統計をログ
+      const sessionDuration = ScrapingUtil.sessionManager.getSessionDuration();
+      console.log(`Session statistics: Duration=${Math.round(sessionDuration)}分, Actions=${ScrapingUtil.sessionManager.actionCount}`);
+      
       // 完了通知
       const completionMessage = this.isRunning ? 
         (pageNumber >= pageLimit ? 
-          `完了: ${pageNumber}ページから${this.candidates.length}件の候補者を取得しました` :
-          `完了: ${this.candidates.length}件の候補者を取得しました`) :
-        `停止: ${pageNumber}ページ目で停止（${this.candidates.length}件取得）`;
+          `完了: ${pageNumber}ページから${this.candidates.length}件の候補者を取得しました（セッション時間: ${Math.round(sessionDuration)}分）` :
+          `完了: ${this.candidates.length}件の候補者を取得しました（セッション時間: ${Math.round(sessionDuration)}分）`) :
+        `停止: ${pageNumber}ページ目で停止（${this.candidates.length}件取得、セッション時間: ${Math.round(sessionDuration)}分）`;
       
       await this.updateProgress({
         status: this.isRunning ? 'completed' : 'stopped',
@@ -155,6 +267,16 @@ class BizReachScraper {
       
       if (!resumeElement) {
         return { success: false, message: '候補者情報が表示されていません' };
+      }
+      
+      // レジュメが長い場合は自然にスクロール
+      const resumeHeight = resumeElement.scrollHeight;
+      if (resumeHeight > window.innerHeight * 1.5) {
+        // ページが画面の1.5倍以上の高さの場合、スクロールする
+        await ScrapingUtil.scrollThroughPage({
+          segments: Math.min(3, Math.ceil(resumeHeight / window.innerHeight)),
+          readEachSegment: true
+        });
       }
       
       // ドロワーに表示されている1人の候補者情報を抽出
@@ -628,14 +750,16 @@ class BizReachScraper {
           return false;
         }
         
-        foundButton.click();
+        // 人間らしいクリック
+        await ScrapingUtil.humanLikeClick(foundButton);
       } else {
         // ボタンの状態確認
         if (nextButton.disabled || nextButton.classList.contains('disabled') || nextButton.hasAttribute('disabled')) {
           return false;
         }
         
-        nextButton.click();
+        // 人間らしいクリック
+        await ScrapingUtil.humanLikeClick(nextButton);
       }
       
       // ドロワーの内容が更新されるのを待つ

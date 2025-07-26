@@ -16,7 +16,7 @@ class ExperienceEvaluatorNode(BaseNode):
     def __init__(self, api_key: str):
         super().__init__("ExperienceEvaluator")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
     
     async def process(self, state: ResearchState) -> ResearchState:
         """実務経験の評価を実行"""
