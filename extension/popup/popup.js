@@ -268,6 +268,9 @@ async function handlePlatformSelect(e) {
   
   state.selectedPlatform = platform;
   
+  // プラットフォームに応じてラベルを変更
+  updatePageCountLabel(platform);
+  
   // 選択したプラットフォームをストレージに保存
   await chrome.storage.local.set({ selected_platform: platform });
   
@@ -288,6 +291,27 @@ async function handlePlatformSelect(e) {
   // クライアントが選択されている場合は採用要件を読み込み
   if (state.selectedClient) {
     await loadRequirements();
+  }
+}
+
+// ページ数/カード数のラベルを更新
+function updatePageCountLabel(platform) {
+  const label = document.getElementById('pageCountLabel');
+  const hint = document.getElementById('pageCountHint');
+  
+  if (!label || !hint) return;
+  
+  // プラットフォームのURLを取得
+  const platformData = state.mediaPlatforms.find(p => p.id === platform);
+  const platformUrl = platformData?.url || '';
+  
+  // リクナビの場合はカード数として表示
+  if (platformUrl.includes('rikunabi.com') || platform === 'rikunavihrtech') {
+    label.textContent = '取得カード数';
+    hint.textContent = '件（1-100）';
+  } else {
+    label.textContent = '取得ページ数';
+    hint.textContent = 'ページ（1-100）';
   }
 }
 

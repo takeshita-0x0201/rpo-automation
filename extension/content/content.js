@@ -15,7 +15,9 @@ async function initialize() {
     BizReachScraper: typeof BizReachScraper,
     OpenWorkScraper: typeof OpenWorkScraper,
     ExampleSiteScraper: typeof ExampleSiteScraper,
-    windowOpenWorkScraper: typeof window.OpenWorkScraper
+    RikunaviHRTechScraper: typeof RikunaviHRTechScraper,
+    windowOpenWorkScraper: typeof window.OpenWorkScraper,
+    windowRikunaviHRTechScraper: typeof window.RikunaviHRTechScraper
   });
   
   // 現在のドメインを確認
@@ -47,6 +49,16 @@ async function initialize() {
     if (typeof ExampleSiteScraper !== 'undefined') {
       scraper = new ExampleSiteScraper();
       await scraper.initialize();
+    }
+  } else if (currentDomain.includes('hrtech.rikunabi.com')) {
+    // リクナビHR Tech用スクレイパー
+    const ScraperClass = window.RikunaviHRTechScraper || RikunaviHRTechScraper;
+    if (typeof ScraperClass !== 'undefined') {
+      scraper = new ScraperClass();
+      await scraper.initialize();
+      console.log('RikunaviHRTech scraper initialized');
+    } else {
+      console.error('RikunaviHRTechScraper is not defined');
     }
   }
   // TODO: 他のサイトも同様に追加

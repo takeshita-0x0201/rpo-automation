@@ -16,6 +16,9 @@
     "https://*.vorkers.com/*",
     "https://*.openwork.jp/*",
     "https://recruiting.openwork.jp/*",
+    "https://*.rikunabi.com/*",
+    "https://hrtech.rikunabi.com/*",
+    "https://ats.hrtech.rikunabi.com/*",
     "http://localhost:8000/*",
     "https://*.run.app/*"
   ],
@@ -34,6 +37,8 @@
         "https://*.recruiting.vorkers.com/*",
         "https://*.openwork.jp/*",
         "https://recruiting.openwork.jp/*",
+        "https://*.rikunabi.com/*",
+        "https://hrtech.rikunabi.com/*",
         "https://*.example.com/*"
       ],
       "js": [
@@ -44,6 +49,7 @@
         "content/data-formatter.js",
         "content/scrapers/bizreach.js",
         "content/scrapers/openwork.js",
+        "content/scrapers/rikunavihrtech.js",
         "content/scrapers/example-site.js",
         "content/content.js"
       ],
@@ -64,7 +70,9 @@
       "https://*.green-japan.com/*",
       "https://*.recruiting.vorkers.com/*",
       "https://*.openwork.jp/*",
-      "https://recruiting.openwork.jp/*"
+      "https://recruiting.openwork.jp/*",
+      "https://*.rikunabi.com/*",
+      "https://hrtech.rikunabi.com/*"
     ]
   }],
   

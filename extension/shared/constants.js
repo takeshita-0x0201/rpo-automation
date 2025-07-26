@@ -13,7 +13,7 @@ const API_CONFIG = {
 };
 
 // 現在の環境（開発時はDEV、本番はPRODに変更）
-const CURRENT_ENV = 'DEV';
+const CURRENT_ENV = 'PROD';
 const API_BASE_URL = API_CONFIG[CURRENT_ENV].BASE_URL;
 const API_TIMEOUT = API_CONFIG[CURRENT_ENV].TIMEOUT;
 

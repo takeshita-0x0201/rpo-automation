@@ -362,8 +362,10 @@ async function startScraping({ clientId, clientName, requirementId, pageLimit, s
         // サイトに応じて必要なスクレイパーを追加
         if (currentUrl.hostname.includes('bizreach') || currentUrl.hostname.includes('cr-support.jp')) {
           files.push('content/scrapers/bizreach.js');
-        } else if (currentUrl.hostname.includes('vorkers.com')) {
+        } else if (currentUrl.hostname.includes('vorkers.com') || currentUrl.hostname.includes('openwork')) {
           files.push('content/scrapers/openwork.js');
+        } else if (currentUrl.hostname.includes('rikunabi.com') || currentUrl.hostname.includes('hrtech')) {
+          files.push('content/scrapers/rikunavihrtech.js');
         }
         
         files.push('content/content.js');
@@ -385,15 +387,25 @@ async function startScraping({ clientId, clientName, requirementId, pageLimit, s
       
       // メッセージ送信
       try {
+        // サイトによってpageLimitの意味を変える
+        const currentUrl = new URL(tab.url);
+        const dataToSend = {
+          sessionId: data.session_id,
+          clientId: clientId,
+          requirementId: requirementId,
+          scrape_resume: scrape_resume // フラグを渡す
+        };
+        
+        // リクナビの場合はcardLimitとして送信
+        if (currentUrl.hostname.includes('rikunabi.com') || currentUrl.hostname.includes('hrtech')) {
+          dataToSend.cardLimit = pageLimit; // カード数として扱う
+        } else {
+          dataToSend.pageLimit = pageLimit; // ページ数として扱う
+        }
+        
         await chrome.tabs.sendMessage(tab.id, {
           type: 'START_SCRAPING',
-          data: {
-            sessionId: data.session_id,
-            clientId: clientId,
-            requirementId: requirementId,
-            pageLimit: pageLimit,
-            scrape_resume: scrape_resume // フラグを渡す
-          }
+          data: dataToSend
         });
       } catch (error) {
         console.error('Failed to send message to content script:', error);
