@@ -19,8 +19,8 @@ from datetime import datetime
 from typing import Optional
 
 # ルーターのインポート
-from routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings, csv_upload, media_platforms, admin_media_platforms
-from routers import job_execution, csv_api, sync_api, sync_monitor, client_evaluations, feedback_api  # , matching_api
+from .routers import requirements, jobs, results, auth, clients, users, admin_requirements, auth_extension, extension_api, manager, manager_clients, manager_requirements, candidates, job_postings, csv_upload, media_platforms, admin_media_platforms
+from .routers import job_execution, csv_api, sync_api, sync_monitor, client_evaluations, feedback_api  # , matching_api
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
