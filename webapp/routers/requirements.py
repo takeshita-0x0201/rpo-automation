@@ -207,7 +207,7 @@ async def get_requirement(requirement_id: str):
 async def create_requirement(requirement: RequirementCreate):
     return RequirementResponse(
         id="dummy-id",
-        **requirement.dict(),
+        **requirement.model_dump(),
         created_at=datetime.now(),
         updated_at=datetime.now()
     )

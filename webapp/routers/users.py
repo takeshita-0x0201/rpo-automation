@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from typing import Optional, List
 from datetime import datetime
 import uuid
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
 
 from core.utils.supabase_client import get_supabase_client
@@ -27,7 +27,7 @@ class UserRole(str, Enum):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: constr(min_length=6)
+    password: str = Field(min_length=6)
     full_name: str
     role: UserRole
     department: Optional[str] = None
