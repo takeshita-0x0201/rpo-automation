@@ -2,11 +2,11 @@ services:
   - type: web
     name: rpo-automation-api
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements-render.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.18
+        value: 3.9
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET_KEY
