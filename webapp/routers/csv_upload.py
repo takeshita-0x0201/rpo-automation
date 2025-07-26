@@ -124,9 +124,11 @@ async def process_csv_upload(upload_id: str, df: pd.DataFrame, username: str):
         upload_progress[upload_id]["progress"] = 10
         
         # 求人情報（デモ用に固定値、実際には動的に取得）
+        import tempfile
+        temp_dir = tempfile.gettempdir()
         job_info = {
-            "job_description_path": "/tmp/job_description.txt",
-            "job_memo_path": "/tmp/job_memo.txt"
+            "job_description_path": os.path.join(temp_dir, "job_description.txt"),
+            "job_memo_path": os.path.join(temp_dir, "job_memo.txt")
         }
         
         # エンリッチメント実行

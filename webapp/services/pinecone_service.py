@@ -5,7 +5,13 @@ Pineconeサービス
 import os
 import logging
 from typing import List, Dict, Optional, Tuple
-from pinecone import Pinecone, ServerlessSpec
+try:
+    from pinecone import Pinecone, ServerlessSpec
+    PINECONE_AVAILABLE = True
+except ImportError:
+    PINECONE_AVAILABLE = False
+    Pinecone = None
+    ServerlessSpec = None
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -25,8 +31,11 @@ class PineconeService:
     def __init__(self):
         # Pinecone APIキーの取得
         api_key = os.getenv('PINECONE_API_KEY')
-        if not api_key:
-            raise ValueError("PINECONE_API_KEY is not set")
+        if not api_key or not PINECONE_AVAILABLE:
+            logger.warning("Pinecone service is not available")
+            self.pc = None
+            self.index = None
+            return
         
         # Pineconeクライアントの初期化
         self.pc = Pinecone(api_key=api_key)
