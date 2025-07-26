@@ -1,0 +1,26 @@
+# Renderの環境変数設定
+# Dashboard → Environment → Add Environment Variable から以下を追加
+
+# Supabase Database
+DATABASE_URL=postgresql://postgres.agpoeoexuirxzdszdtlu:[YOUR_DB_PASSWORD]@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+
+# Supabase API
+SUPABASE_URL=https://agpoeoexuirxzdszdtlu.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFncG9lb2V4dWlyeHpkc3pkdGx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1OTMzOTEsImV4cCI6MjA2NzE2OTM5MX0.gCx3hYQLcL8wrWk7LBSK3wo-4rPWt7vyDdy-B2loByA
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFncG9lb2V4dWlyeHpkc3pkdGx1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTU5MzM5MSwiZXhwIjoyMDY3MTY5MzkxfQ.ro0Leni7Dp9ag7DtWY-Uenrp35Y_Ybtlafb7JkCOL_0
+
+# JWT認証
+JWT_SECRET_KEY=JkEfHKnQjCyYSm4yJ4Z9rDMRDa44gxg4lSsw8dLAfZY=
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# アプリケーション設定
+ENVIRONMENT=production
+DEBUG=False
+
+# Chrome拡張機能設定
+CHROME_EXTENSION_ID=[YOUR_EXTENSION_ID]
+CORS_ORIGINS=chrome-extension://[YOUR_EXTENSION_ID],http://localhost:3000
+
+# Python設定
+PYTHON_VERSION=3.9
