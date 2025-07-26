@@ -23,6 +23,7 @@
     "https://hrtech.rikunabi.com/*",
     "https://ats.hrtech.rikunabi.com/*",
     "http://localhost:8000/*",
+    "https://rpo-automation-api.onrender.com/*",
     "https://*.run.app/*"
   ],
   

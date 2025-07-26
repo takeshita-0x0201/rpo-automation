@@ -8,7 +8,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+from email_validator import validate_email
 from typing import Optional, List
 import uuid
 from config import settings
@@ -106,7 +107,7 @@ class Candidate(Base):
 
 # Pydantic models
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: str
     password: str
     name: Optional[str] = None
 
@@ -118,7 +119,7 @@ class UserResponse(BaseModel):
     is_admin: bool
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 class Token(BaseModel):

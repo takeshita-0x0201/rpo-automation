@@ -641,8 +641,10 @@ async function getStoredToken() {
 
 // API ベースURL取得
 function getApiBaseUrl() {
-  // 本番環境では環境変数から取得するように変更
-  return 'http://localhost:8000';
+  // 本番環境
+  return 'https://rpo-automation-api.onrender.com';
+  // 開発環境（ローカルテスト時はコメントを入れ替える）
+  // return 'http://localhost:8000';
 }
 
 // 候補者データの保存とBigQueryアップロード
